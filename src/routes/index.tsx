@@ -104,6 +104,9 @@ const THEMES: Record<
   studio: { label: "Studio", bg: "#050d1a", fg: "#bae6fd", dim: "#38618c", accent: "#38bdf8" },
 };
 
+type ThresholdUnit = "sec" | "pct";
+type AlertMode = "visual" | "sound" | "both";
+
 interface Settings {
   speed: number; // 1-10
   fontSize: number; // px
@@ -115,6 +118,10 @@ interface Settings {
   wpm: number;
   targetTime: number; // seconds, 0 = off
   timeLocked: boolean;
+  thresholdUnit: ThresholdUnit;
+  warnAt: number; // remaining seconds (or % of target) for first cue
+  finalAt: number; // remaining seconds (or %) for final cue
+  alertMode: AlertMode;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -128,7 +135,43 @@ const DEFAULT_SETTINGS: Settings = {
   wpm: 130,
   targetTime: 0,
   timeLocked: false,
+  thresholdUnit: "sec",
+  warnAt: 30,
+  finalAt: 10,
+  alertMode: "both",
 };
+
+/* ---------------------------- audio alert cues ---------------------------- */
+
+let audioCtx: AudioContext | null = null;
+
+function playBeeps(count: number, freq: number) {
+  if (typeof window === "undefined") return;
+  try {
+    const Ctor =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctor) return;
+    audioCtx = audioCtx ?? new Ctor();
+    if (audioCtx.state === "suspended") void audioCtx.resume();
+    const ctx = audioCtx;
+    for (let i = 0; i < count; i++) {
+      const start = ctx.currentTime + i * 0.24;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.25, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.18);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.2);
+    }
+  } catch {
+    /* audio unavailable — visual cues still apply */
+  }
+}
 
 const SETTINGS_KEY = "pitchprompter-settings";
 const SCRIPT_KEY = "pitchprompter-script";
