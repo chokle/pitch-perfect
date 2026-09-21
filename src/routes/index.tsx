@@ -903,6 +903,87 @@ function Prompter({
                 )}
               </button>
             </div>
+
+            <span className="hidden h-4 w-px sm:block" style={{ backgroundColor: theme.dim + "55" }} />
+
+            {/* countdown warning thresholds */}
+            <div className="flex items-center gap-2">
+              <Bell className="h-4 w-4" />
+              <span className="font-medium">Warn at</span>
+              <input
+                type="number"
+                min={0}
+                step={settings.thresholdUnit === "pct" ? 1 : 5}
+                value={settings.warnAt}
+                onChange={(e) => upd({ warnAt: Math.max(0, Number(e.target.value) || 0) })}
+                className="w-16 rounded border bg-transparent px-1.5 py-1 font-mono"
+                style={{ borderColor: theme.dim + "66", color: theme.fg }}
+                title="First warning cue, by time remaining"
+              />
+              <span className="font-medium">then</span>
+              <input
+                type="number"
+                min={0}
+                step={settings.thresholdUnit === "pct" ? 1 : 5}
+                value={settings.finalAt}
+                onChange={(e) => upd({ finalAt: Math.max(0, Number(e.target.value) || 0) })}
+                className="w-16 rounded border bg-transparent px-1.5 py-1 font-mono"
+                style={{ borderColor: theme.dim + "66", color: theme.fg }}
+                title="Final warning cue, by time remaining"
+              />
+              <div className="flex items-center gap-1">
+                {(["sec", "pct"] as const).map((u) => (
+                  <button
+                    key={u}
+                    onClick={() => upd({ thresholdUnit: u })}
+                    className="rounded-full border px-2.5 py-1 font-medium"
+                    style={{
+                      borderColor: settings.thresholdUnit === u ? theme.accent : theme.dim + "66",
+                      color: settings.thresholdUnit === u ? theme.accent : theme.fg,
+                    }}
+                  >
+                    {u === "sec" ? "sec left" : "% left"}
+                  </button>
+                ))}
+              </div>
+              {[30, 15, 10].map((s) => (
+                <button
+                  key={s}
+                  onClick={() => upd({ thresholdUnit: "sec", warnAt: s, finalAt: Math.round(s / 3) })}
+                  className="rounded-full border px-2.5 py-1 font-medium"
+                  style={{ borderColor: theme.dim + "44", color: theme.dim }}
+                  title={`Warn at ${s}s left`}
+                >
+                  {s}s
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <span className="font-medium">Alerts</span>
+              {(
+                [
+                  { k: "visual", label: "Visual", Icon: Eye },
+                  { k: "sound", label: "Sound", Icon: Volume2 },
+                  { k: "both", label: "Both", Icon: Bell },
+                ] as const
+              ).map(({ k, label, Icon }) => (
+                <button
+                  key={k}
+                  onClick={() => {
+                    upd({ alertMode: k });
+                    if (k !== "visual") playBeeps(1, 880);
+                  }}
+                  className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 font-medium"
+                  style={{
+                    borderColor: settings.alertMode === k ? theme.accent : theme.dim + "66",
+                    color: settings.alertMode === k ? theme.accent : theme.fg,
+                  }}
+                >
+                  <Icon className="h-3.5 w-3.5" /> {label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
