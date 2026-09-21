@@ -171,7 +171,7 @@ function Index() {
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    setScript(loadJSON(SCRIPT_KEY, "") as unknown as string);
+    setScript(localStorage.getItem(SCRIPT_KEY) ?? "");
     setSettings(loadJSON(SETTINGS_KEY, DEFAULT_SETTINGS));
     setHydrated(true);
   }, []);
