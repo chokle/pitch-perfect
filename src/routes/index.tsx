@@ -542,36 +542,55 @@ function Prompter({
       </div>
 
       {/* overtime banner */}
-      {settings.targetTime > 0 && elapsed > settings.targetTime && (
+      {stage === "over" && visualAlerts && (
         <div className="pointer-events-none absolute inset-x-0 top-1 z-30 flex justify-center">
           <div
-            className="animate-pulse rounded-b-lg px-6 py-2 font-mono text-sm font-bold tracking-widest"
+            className={cn(
+              "rounded-b-lg px-6 py-2 font-mono text-sm font-bold tracking-widest",
+              playing && "animate-pulse"
+            )}
             style={{ backgroundColor: "#dc2626", color: "#ffffff" }}
           >
-            OVERTIME +{formatTime(elapsed - settings.targetTime)}
+            OVERTIME +{formatTime(-remaining)}
           </div>
         </div>
       )}
 
       {/* time-remaining pill (top corner, visible even when controls hide) */}
-      {settings.targetTime > 0 && elapsed <= settings.targetTime && (
-        <div className="pointer-events-none absolute right-4 top-4 z-30">
+      {hasTarget && stage !== "over" && (
+        <div className="pointer-events-none absolute right-4 top-4 z-30 flex items-center gap-2">
+          {!playing && (
+            <div
+              className="rounded-full px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wider"
+              style={{ backgroundColor: theme.dim + "22", color: theme.dim }}
+            >
+              Paused
+            </div>
+          )}
           <div
-            className="rounded-full px-4 py-1.5 font-mono text-sm font-bold"
+            className={cn(
+              "rounded-full px-4 py-1.5 font-mono text-sm font-bold",
+              visualAlerts && stage === "final" && playing && "animate-pulse"
+            )}
             style={{
               backgroundColor: theme.dim + "22",
-              color:
-                settings.targetTime - elapsed <= Math.min(30, settings.targetTime * 0.2)
-                  ? "#fbbf24"
-                  : theme.fg,
+              color: !visualAlerts
+                ? theme.fg
+                : stage === "final"
+                  ? "#f87171"
+                  : stage === "warn"
+                    ? "#fbbf24"
+                    : theme.fg,
               border: `1px solid ${
-                settings.targetTime - elapsed <= Math.min(30, settings.targetTime * 0.2)
-                  ? "#fbbf2488"
-                  : theme.dim + "44"
+                visualAlerts && stage === "final"
+                  ? "#f87171aa"
+                  : visualAlerts && stage === "warn"
+                    ? "#fbbf2488"
+                    : theme.dim + "44"
               }`,
             }}
           >
-            -{formatTime(settings.targetTime - elapsed)}
+            -{formatTime(remaining)}
           </div>
         </div>
       )}
