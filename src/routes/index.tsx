@@ -152,6 +152,16 @@ function formatTime(sec: number) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
+/** Accepts "90", "1:30", "2:05" and returns total seconds (0 when invalid). */
+function parseTimeInput(value: string): number {
+  const v = value.trim();
+  if (!v) return 0;
+  if (/^\d+$/.test(v)) return Number(v);
+  const m = v.match(/^(\d{1,3}):([0-5]?\d)$/);
+  if (m) return Number(m[1]) * 60 + Number(m[2]);
+  return 0;
+}
+
 /* ---------------------------------- app ----------------------------------- */
 
 function Index() {
@@ -537,14 +547,49 @@ function Prompter({
               <RotateCcw className="h-4 w-4" />
             </button>
 
-            <div
-              className="ml-2 flex items-center gap-2 rounded-full px-4 py-2 font-mono text-sm"
-              style={{ backgroundColor: theme.dim + "22", color: theme.fg }}
-            >
-              <Timer className="h-4 w-4" style={{ color: theme.accent }} />
-              <span>{formatTime(elapsed)}</span>
-              <span style={{ color: theme.dim }}>/ ~{formatTime(estimatedTotal)}</span>
-            </div>
+            {(() => {
+              const hasTarget = settings.targetTime > 0;
+              const remaining = settings.targetTime - elapsed;
+              const warnAt = Math.min(30, settings.targetTime * 0.2);
+              const over = hasTarget && remaining < 0;
+              const warning = hasTarget && !over && remaining <= warnAt;
+              const chipColor = over ? "#f87171" : warning ? "#fbbf24" : theme.accent;
+              return (
+                <div
+                  className={cn(
+                    "ml-2 flex items-center gap-2 rounded-full px-4 py-2 font-mono text-sm",
+                    over && "animate-pulse"
+                  )}
+                  style={{
+                    backgroundColor: over ? "#f8717126" : theme.dim + "22",
+                    color: theme.fg,
+                    border: over
+                      ? "1px solid #f87171"
+                      : warning
+                        ? "1px solid #fbbf2488"
+                        : "1px solid transparent",
+                  }}
+                >
+                  {hasTarget && settings.timeLocked && (
+                    <Lock className="h-3.5 w-3.5" style={{ color: chipColor }} />
+                  )}
+                  <Timer className="h-4 w-4" style={{ color: chipColor }} />
+                  <span>{formatTime(elapsed)}</span>
+                  {hasTarget ? (
+                    <>
+                      <span style={{ color: theme.dim }}>/</span>
+                      <span style={{ color: chipColor, fontWeight: 700 }}>
+                        {over
+                          ? `+${formatTime(-remaining)} over`
+                          : `-${formatTime(remaining)}`}
+                      </span>
+                    </>
+                  ) : (
+                    <span style={{ color: theme.dim }}>/ ~{formatTime(estimatedTotal)}</span>
+                  )}
+                </div>
+              );
+            })()}
 
             <div className="flex-1" />
 
