@@ -18,6 +18,9 @@ import {
   Sparkles,
   Lock,
   LockOpen,
+  Bell,
+  Eye,
+  Volume2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -104,6 +107,9 @@ const THEMES: Record<
   studio: { label: "Studio", bg: "#050d1a", fg: "#bae6fd", dim: "#38618c", accent: "#38bdf8" },
 };
 
+type ThresholdUnit = "sec" | "pct";
+type AlertMode = "visual" | "sound" | "both";
+
 interface Settings {
   speed: number; // 1-10
   fontSize: number; // px
@@ -115,6 +121,10 @@ interface Settings {
   wpm: number;
   targetTime: number; // seconds, 0 = off
   timeLocked: boolean;
+  thresholdUnit: ThresholdUnit;
+  warnAt: number; // remaining seconds (or % of target) for first cue
+  finalAt: number; // remaining seconds (or %) for final cue
+  alertMode: AlertMode;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -128,7 +138,43 @@ const DEFAULT_SETTINGS: Settings = {
   wpm: 130,
   targetTime: 0,
   timeLocked: false,
+  thresholdUnit: "sec",
+  warnAt: 30,
+  finalAt: 10,
+  alertMode: "both",
 };
+
+/* ---------------------------- audio alert cues ---------------------------- */
+
+let audioCtx: AudioContext | null = null;
+
+function playBeeps(count: number, freq: number) {
+  if (typeof window === "undefined") return;
+  try {
+    const Ctor =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctor) return;
+    audioCtx = audioCtx ?? new Ctor();
+    if (audioCtx.state === "suspended") void audioCtx.resume();
+    const ctx = audioCtx;
+    for (let i = 0; i < count; i++) {
+      const start = ctx.currentTime + i * 0.24;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.25, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.18);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + 0.2);
+    }
+  } catch {
+    /* audio unavailable — visual cues still apply */
+  }
+}
 
 const SETTINGS_KEY = "pitchprompter-settings";
 const SCRIPT_KEY = "pitchprompter-script";
@@ -351,6 +397,39 @@ function Prompter({
 
   const pxPerSecond = 15 + settings.speed * settings.speed * 4;
 
+  /* countdown thresholds, resolved to seconds remaining */
+  const hasTarget = settings.targetTime > 0;
+  const remaining = settings.targetTime - elapsed;
+  const toSeconds = (v: number) =>
+    settings.thresholdUnit === "pct" ? (settings.targetTime * v) / 100 : v;
+  const warnSec = Math.max(0, toSeconds(settings.warnAt));
+  const finalSec = Math.min(Math.max(0, toSeconds(settings.finalAt)), warnSec);
+
+  const stage: "none" | "warn" | "final" | "over" = !hasTarget
+    ? "none"
+    : remaining < 0
+      ? "over"
+      : remaining <= finalSec
+        ? "final"
+        : remaining <= warnSec
+          ? "warn"
+          : "none";
+
+  const visualAlerts = settings.alertMode !== "sound";
+  const soundAlerts = settings.alertMode !== "visual";
+
+  /* fire audio cues on stage changes — only while running, so pausing freezes them */
+  const lastStageRef = useRef(stage);
+  useEffect(() => {
+    const prev = lastStageRef.current;
+    if (stage === prev) return;
+    lastStageRef.current = stage;
+    if (!playing || !soundAlerts) return;
+    if (stage === "warn") playBeeps(1, 660);
+    else if (stage === "final") playBeeps(2, 880);
+    else if (stage === "over") playBeeps(3, 440);
+  }, [stage, playing, soundAlerts]);
+
   /* rAF scroll loop */
   useEffect(() => {
     if (!playing) return;
@@ -466,36 +545,55 @@ function Prompter({
       </div>
 
       {/* overtime banner */}
-      {settings.targetTime > 0 && elapsed > settings.targetTime && (
+      {stage === "over" && visualAlerts && (
         <div className="pointer-events-none absolute inset-x-0 top-1 z-30 flex justify-center">
           <div
-            className="animate-pulse rounded-b-lg px-6 py-2 font-mono text-sm font-bold tracking-widest"
+            className={cn(
+              "rounded-b-lg px-6 py-2 font-mono text-sm font-bold tracking-widest",
+              playing && "animate-pulse"
+            )}
             style={{ backgroundColor: "#dc2626", color: "#ffffff" }}
           >
-            OVERTIME +{formatTime(elapsed - settings.targetTime)}
+            OVERTIME +{formatTime(-remaining)}
           </div>
         </div>
       )}
 
       {/* time-remaining pill (top corner, visible even when controls hide) */}
-      {settings.targetTime > 0 && elapsed <= settings.targetTime && (
-        <div className="pointer-events-none absolute right-4 top-4 z-30">
+      {hasTarget && stage !== "over" && (
+        <div className="pointer-events-none absolute right-4 top-4 z-30 flex items-center gap-2">
+          {!playing && (
+            <div
+              className="rounded-full px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wider"
+              style={{ backgroundColor: theme.dim + "22", color: theme.dim }}
+            >
+              Paused
+            </div>
+          )}
           <div
-            className="rounded-full px-4 py-1.5 font-mono text-sm font-bold"
+            className={cn(
+              "rounded-full px-4 py-1.5 font-mono text-sm font-bold",
+              visualAlerts && stage === "final" && playing && "animate-pulse"
+            )}
             style={{
               backgroundColor: theme.dim + "22",
-              color:
-                settings.targetTime - elapsed <= Math.min(30, settings.targetTime * 0.2)
-                  ? "#fbbf24"
-                  : theme.fg,
+              color: !visualAlerts
+                ? theme.fg
+                : stage === "final"
+                  ? "#f87171"
+                  : stage === "warn"
+                    ? "#fbbf24"
+                    : theme.fg,
               border: `1px solid ${
-                settings.targetTime - elapsed <= Math.min(30, settings.targetTime * 0.2)
-                  ? "#fbbf2488"
-                  : theme.dim + "44"
+                visualAlerts && stage === "final"
+                  ? "#f87171aa"
+                  : visualAlerts && stage === "warn"
+                    ? "#fbbf2488"
+                    : theme.dim + "44"
               }`,
             }}
           >
-            -{formatTime(settings.targetTime - elapsed)}
+            -{formatTime(remaining)}
           </div>
         </div>
       )}
@@ -583,26 +681,30 @@ function Prompter({
             </button>
 
             {(() => {
-              const hasTarget = settings.targetTime > 0;
-              const remaining = settings.targetTime - elapsed;
-              const warnAt = Math.min(30, settings.targetTime * 0.2);
-              const over = hasTarget && remaining < 0;
-              const warning = hasTarget && !over && remaining <= warnAt;
-              const chipColor = over ? "#f87171" : warning ? "#fbbf24" : theme.accent;
+              const over = stage === "over";
+              const alerting = visualAlerts && (stage === "warn" || stage === "final");
+              const chipColor = !visualAlerts
+                ? theme.accent
+                : over || stage === "final"
+                  ? "#f87171"
+                  : stage === "warn"
+                    ? "#fbbf24"
+                    : theme.accent;
               return (
                 <div
                   className={cn(
                     "ml-2 flex items-center gap-2 rounded-full px-4 py-2 font-mono text-sm",
-                    over && "animate-pulse"
+                    over && visualAlerts && playing && "animate-pulse"
                   )}
                   style={{
-                    backgroundColor: over ? "#f8717126" : theme.dim + "22",
+                    backgroundColor: over && visualAlerts ? "#f8717126" : theme.dim + "22",
                     color: theme.fg,
-                    border: over
-                      ? "1px solid #f87171"
-                      : warning
-                        ? "1px solid #fbbf2488"
-                        : "1px solid transparent",
+                    border:
+                      over && visualAlerts
+                        ? "1px solid #f87171"
+                        : alerting
+                          ? `1px solid ${chipColor}88`
+                          : "1px solid transparent",
                   }}
                 >
                   {hasTarget && settings.timeLocked && (
@@ -614,13 +716,16 @@ function Prompter({
                     <>
                       <span style={{ color: theme.dim }}>/</span>
                       <span style={{ color: chipColor, fontWeight: 700 }}>
-                        {over
-                          ? `+${formatTime(-remaining)} over`
-                          : `-${formatTime(remaining)}`}
+                        {over ? `+${formatTime(-remaining)} over` : `-${formatTime(remaining)}`}
                       </span>
                     </>
                   ) : (
                     <span style={{ color: theme.dim }}>/ ~{formatTime(estimatedTotal)}</span>
+                  )}
+                  {!playing && (
+                    <span className="text-xs uppercase tracking-wider" style={{ color: theme.dim }}>
+                      paused
+                    </span>
                   )}
                 </div>
               );
@@ -800,6 +905,87 @@ function Prompter({
                   </>
                 )}
               </button>
+            </div>
+
+            <span className="hidden h-4 w-px sm:block" style={{ backgroundColor: theme.dim + "55" }} />
+
+            {/* countdown warning thresholds */}
+            <div className="flex items-center gap-2">
+              <Bell className="h-4 w-4" />
+              <span className="font-medium">Warn at</span>
+              <input
+                type="number"
+                min={0}
+                step={settings.thresholdUnit === "pct" ? 1 : 5}
+                value={settings.warnAt}
+                onChange={(e) => upd({ warnAt: Math.max(0, Number(e.target.value) || 0) })}
+                className="w-16 rounded border bg-transparent px-1.5 py-1 font-mono"
+                style={{ borderColor: theme.dim + "66", color: theme.fg }}
+                title="First warning cue, by time remaining"
+              />
+              <span className="font-medium">then</span>
+              <input
+                type="number"
+                min={0}
+                step={settings.thresholdUnit === "pct" ? 1 : 5}
+                value={settings.finalAt}
+                onChange={(e) => upd({ finalAt: Math.max(0, Number(e.target.value) || 0) })}
+                className="w-16 rounded border bg-transparent px-1.5 py-1 font-mono"
+                style={{ borderColor: theme.dim + "66", color: theme.fg }}
+                title="Final warning cue, by time remaining"
+              />
+              <div className="flex items-center gap-1">
+                {(["sec", "pct"] as const).map((u) => (
+                  <button
+                    key={u}
+                    onClick={() => upd({ thresholdUnit: u })}
+                    className="rounded-full border px-2.5 py-1 font-medium"
+                    style={{
+                      borderColor: settings.thresholdUnit === u ? theme.accent : theme.dim + "66",
+                      color: settings.thresholdUnit === u ? theme.accent : theme.fg,
+                    }}
+                  >
+                    {u === "sec" ? "sec left" : "% left"}
+                  </button>
+                ))}
+              </div>
+              {[30, 15, 10].map((s) => (
+                <button
+                  key={s}
+                  onClick={() => upd({ thresholdUnit: "sec", warnAt: s, finalAt: Math.round(s / 3) })}
+                  className="rounded-full border px-2.5 py-1 font-medium"
+                  style={{ borderColor: theme.dim + "44", color: theme.dim }}
+                  title={`Warn at ${s}s left`}
+                >
+                  {s}s
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <span className="font-medium">Alerts</span>
+              {(
+                [
+                  { k: "visual", label: "Visual", Icon: Eye },
+                  { k: "sound", label: "Sound", Icon: Volume2 },
+                  { k: "both", label: "Both", Icon: Bell },
+                ] as const
+              ).map(({ k, label, Icon }) => (
+                <button
+                  key={k}
+                  onClick={() => {
+                    upd({ alertMode: k });
+                    if (k !== "visual") playBeeps(1, 880);
+                  }}
+                  className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 font-medium"
+                  style={{
+                    borderColor: settings.alertMode === k ? theme.accent : theme.dim + "66",
+                    color: settings.alertMode === k ? theme.accent : theme.fg,
+                  }}
+                >
+                  <Icon className="h-3.5 w-3.5" /> {label}
+                </button>
+              ))}
             </div>
           </div>
         </div>
