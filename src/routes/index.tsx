@@ -16,6 +16,8 @@ import {
   Timer,
   FileText,
   Sparkles,
+  Lock,
+  LockOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -111,6 +113,8 @@ interface Settings {
   mirrorV: boolean;
   eyeLine: boolean;
   wpm: number;
+  targetTime: number; // seconds, 0 = off
+  timeLocked: boolean;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -122,6 +126,8 @@ const DEFAULT_SETTINGS: Settings = {
   mirrorV: false,
   eyeLine: true,
   wpm: 130,
+  targetTime: 0,
+  timeLocked: false,
 };
 
 const SETTINGS_KEY = "pitchprompter-settings";
