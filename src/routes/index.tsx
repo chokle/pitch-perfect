@@ -16,6 +16,8 @@ import {
   Timer,
   FileText,
   Sparkles,
+  Lock,
+  LockOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -111,6 +113,8 @@ interface Settings {
   mirrorV: boolean;
   eyeLine: boolean;
   wpm: number;
+  targetTime: number; // seconds, 0 = off
+  timeLocked: boolean;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -122,6 +126,8 @@ const DEFAULT_SETTINGS: Settings = {
   mirrorV: false,
   eyeLine: true,
   wpm: 130,
+  targetTime: 0,
+  timeLocked: false,
 };
 
 const SETTINGS_KEY = "pitchprompter-settings";
@@ -146,6 +152,16 @@ function formatTime(sec: number) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
+/** Accepts "90", "1:30", "2:05" and returns total seconds (0 when invalid). */
+function parseTimeInput(value: string): number {
+  const v = value.trim();
+  if (!v) return 0;
+  if (/^\d+$/.test(v)) return Number(v);
+  const m = v.match(/^(\d{1,3}):([0-5]?\d)$/);
+  if (m) return Number(m[1]) * 60 + Number(m[2]);
+  return 0;
+}
+
 /* ---------------------------------- app ----------------------------------- */
 
 function Index() {
@@ -155,7 +171,7 @@ function Index() {
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    setScript(loadJSON(SCRIPT_KEY, "") as unknown as string);
+    setScript(localStorage.getItem(SCRIPT_KEY) ?? "");
     setSettings(loadJSON(SETTINGS_KEY, DEFAULT_SETTINGS));
     setHydrated(true);
   }, []);
@@ -449,6 +465,41 @@ function Prompter({
         />
       </div>
 
+      {/* overtime banner */}
+      {settings.targetTime > 0 && elapsed > settings.targetTime && (
+        <div className="pointer-events-none absolute inset-x-0 top-1 z-30 flex justify-center">
+          <div
+            className="animate-pulse rounded-b-lg px-6 py-2 font-mono text-sm font-bold tracking-widest"
+            style={{ backgroundColor: "#dc2626", color: "#ffffff" }}
+          >
+            OVERTIME +{formatTime(elapsed - settings.targetTime)}
+          </div>
+        </div>
+      )}
+
+      {/* time-remaining pill (top corner, visible even when controls hide) */}
+      {settings.targetTime > 0 && elapsed <= settings.targetTime && (
+        <div className="pointer-events-none absolute right-4 top-4 z-30">
+          <div
+            className="rounded-full px-4 py-1.5 font-mono text-sm font-bold"
+            style={{
+              backgroundColor: theme.dim + "22",
+              color:
+                settings.targetTime - elapsed <= Math.min(30, settings.targetTime * 0.2)
+                  ? "#fbbf24"
+                  : theme.fg,
+              border: `1px solid ${
+                settings.targetTime - elapsed <= Math.min(30, settings.targetTime * 0.2)
+                  ? "#fbbf2488"
+                  : theme.dim + "44"
+              }`,
+            }}
+          >
+            -{formatTime(settings.targetTime - elapsed)}
+          </div>
+        </div>
+      )}
+
       {/* scrolling script */}
       <div
         ref={scrollRef}
@@ -531,14 +582,49 @@ function Prompter({
               <RotateCcw className="h-4 w-4" />
             </button>
 
-            <div
-              className="ml-2 flex items-center gap-2 rounded-full px-4 py-2 font-mono text-sm"
-              style={{ backgroundColor: theme.dim + "22", color: theme.fg }}
-            >
-              <Timer className="h-4 w-4" style={{ color: theme.accent }} />
-              <span>{formatTime(elapsed)}</span>
-              <span style={{ color: theme.dim }}>/ ~{formatTime(estimatedTotal)}</span>
-            </div>
+            {(() => {
+              const hasTarget = settings.targetTime > 0;
+              const remaining = settings.targetTime - elapsed;
+              const warnAt = Math.min(30, settings.targetTime * 0.2);
+              const over = hasTarget && remaining < 0;
+              const warning = hasTarget && !over && remaining <= warnAt;
+              const chipColor = over ? "#f87171" : warning ? "#fbbf24" : theme.accent;
+              return (
+                <div
+                  className={cn(
+                    "ml-2 flex items-center gap-2 rounded-full px-4 py-2 font-mono text-sm",
+                    over && "animate-pulse"
+                  )}
+                  style={{
+                    backgroundColor: over ? "#f8717126" : theme.dim + "22",
+                    color: theme.fg,
+                    border: over
+                      ? "1px solid #f87171"
+                      : warning
+                        ? "1px solid #fbbf2488"
+                        : "1px solid transparent",
+                  }}
+                >
+                  {hasTarget && settings.timeLocked && (
+                    <Lock className="h-3.5 w-3.5" style={{ color: chipColor }} />
+                  )}
+                  <Timer className="h-4 w-4" style={{ color: chipColor }} />
+                  <span>{formatTime(elapsed)}</span>
+                  {hasTarget ? (
+                    <>
+                      <span style={{ color: theme.dim }}>/</span>
+                      <span style={{ color: chipColor, fontWeight: 700 }}>
+                        {over
+                          ? `+${formatTime(-remaining)} over`
+                          : `-${formatTime(remaining)}`}
+                      </span>
+                    </>
+                  ) : (
+                    <span style={{ color: theme.dim }}>/ ~{formatTime(estimatedTotal)}</span>
+                  )}
+                </div>
+              );
+            })()}
 
             <div className="flex-1" />
 
@@ -673,6 +759,48 @@ function Prompter({
                 style={{ borderColor: theme.dim + "66", color: theme.fg }}
               />
             </label>
+
+            <span className="hidden h-4 w-px sm:block" style={{ backgroundColor: theme.dim + "55" }} />
+
+            <div className="flex items-center gap-2">
+              <Timer className="h-4 w-4" />
+              <span className="font-medium">Pitch time</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                placeholder="mm:ss"
+                disabled={settings.timeLocked}
+                key={settings.timeLocked ? `locked-${settings.targetTime}` : "unlocked"}
+                defaultValue={settings.targetTime > 0 ? formatTime(settings.targetTime) : ""}
+                onBlur={(e) => upd({ targetTime: parseTimeInput(e.target.value) })}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                }}
+                className="w-16 rounded border bg-transparent px-1.5 py-1 font-mono disabled:opacity-60"
+                style={{ borderColor: settings.timeLocked ? theme.accent : theme.dim + "66", color: theme.fg }}
+                title="Seconds or mm:ss, e.g. 90 or 1:30"
+              />
+              <button
+                onClick={() => upd({ timeLocked: !settings.timeLocked })}
+                disabled={!settings.timeLocked && settings.targetTime <= 0}
+                className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 font-medium disabled:cursor-not-allowed disabled:opacity-40"
+                style={{
+                  borderColor: settings.timeLocked ? theme.accent : theme.dim + "66",
+                  color: settings.timeLocked ? theme.accent : theme.fg,
+                }}
+                title={settings.timeLocked ? "Unlock pitch time" : "Lock pitch time"}
+              >
+                {settings.timeLocked ? (
+                  <>
+                    <Lock className="h-3.5 w-3.5" /> Locked
+                  </>
+                ) : (
+                  <>
+                    <LockOpen className="h-3.5 w-3.5" /> Lock
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>
