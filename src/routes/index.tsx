@@ -394,6 +394,39 @@ function Prompter({
 
   const pxPerSecond = 15 + settings.speed * settings.speed * 4;
 
+  /* countdown thresholds, resolved to seconds remaining */
+  const hasTarget = settings.targetTime > 0;
+  const remaining = settings.targetTime - elapsed;
+  const toSeconds = (v: number) =>
+    settings.thresholdUnit === "pct" ? (settings.targetTime * v) / 100 : v;
+  const warnSec = Math.max(0, toSeconds(settings.warnAt));
+  const finalSec = Math.min(Math.max(0, toSeconds(settings.finalAt)), warnSec);
+
+  const stage: "none" | "warn" | "final" | "over" = !hasTarget
+    ? "none"
+    : remaining < 0
+      ? "over"
+      : remaining <= finalSec
+        ? "final"
+        : remaining <= warnSec
+          ? "warn"
+          : "none";
+
+  const visualAlerts = settings.alertMode !== "sound";
+  const soundAlerts = settings.alertMode !== "visual";
+
+  /* fire audio cues on stage changes — only while running, so pausing freezes them */
+  const lastStageRef = useRef(stage);
+  useEffect(() => {
+    const prev = lastStageRef.current;
+    if (stage === prev) return;
+    lastStageRef.current = stage;
+    if (!playing || !soundAlerts) return;
+    if (stage === "warn") playBeeps(1, 660);
+    else if (stage === "final") playBeeps(2, 880);
+    else if (stage === "over") playBeeps(3, 440);
+  }, [stage, playing, soundAlerts]);
+
   /* rAF scroll loop */
   useEffect(() => {
     if (!playing) return;
