@@ -678,26 +678,30 @@ function Prompter({
             </button>
 
             {(() => {
-              const hasTarget = settings.targetTime > 0;
-              const remaining = settings.targetTime - elapsed;
-              const warnAt = Math.min(30, settings.targetTime * 0.2);
-              const over = hasTarget && remaining < 0;
-              const warning = hasTarget && !over && remaining <= warnAt;
-              const chipColor = over ? "#f87171" : warning ? "#fbbf24" : theme.accent;
+              const over = stage === "over";
+              const alerting = visualAlerts && (stage === "warn" || stage === "final");
+              const chipColor = !visualAlerts
+                ? theme.accent
+                : over || stage === "final"
+                  ? "#f87171"
+                  : stage === "warn"
+                    ? "#fbbf24"
+                    : theme.accent;
               return (
                 <div
                   className={cn(
                     "ml-2 flex items-center gap-2 rounded-full px-4 py-2 font-mono text-sm",
-                    over && "animate-pulse"
+                    over && visualAlerts && playing && "animate-pulse"
                   )}
                   style={{
-                    backgroundColor: over ? "#f8717126" : theme.dim + "22",
+                    backgroundColor: over && visualAlerts ? "#f8717126" : theme.dim + "22",
                     color: theme.fg,
-                    border: over
-                      ? "1px solid #f87171"
-                      : warning
-                        ? "1px solid #fbbf2488"
-                        : "1px solid transparent",
+                    border:
+                      over && visualAlerts
+                        ? "1px solid #f87171"
+                        : alerting
+                          ? `1px solid ${chipColor}88`
+                          : "1px solid transparent",
                   }}
                 >
                   {hasTarget && settings.timeLocked && (
@@ -709,13 +713,16 @@ function Prompter({
                     <>
                       <span style={{ color: theme.dim }}>/</span>
                       <span style={{ color: chipColor, fontWeight: 700 }}>
-                        {over
-                          ? `+${formatTime(-remaining)} over`
-                          : `-${formatTime(remaining)}`}
+                        {over ? `+${formatTime(-remaining)} over` : `-${formatTime(remaining)}`}
                       </span>
                     </>
                   ) : (
                     <span style={{ color: theme.dim }}>/ ~{formatTime(estimatedTotal)}</span>
+                  )}
+                  {!playing && (
+                    <span className="text-xs uppercase tracking-wider" style={{ color: theme.dim }}>
+                      paused
+                    </span>
                   )}
                 </div>
               );
