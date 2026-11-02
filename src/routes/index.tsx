@@ -827,6 +827,48 @@ function Prompter({
               <RotateCcw className="h-4 w-4" />
             </button>
 
+            <button
+              onClick={() => (recording ? stopRecording() : void startRecording())}
+              className={cn(
+                "flex h-10 items-center gap-2 rounded-full border px-4 text-xs font-semibold",
+                recording && "animate-pulse"
+              )}
+              style={{
+                borderColor: recording ? "#f87171" : theme.dim + "66",
+                backgroundColor: recording ? "#f8717122" : "transparent",
+                color: recording ? "#f87171" : theme.fg,
+              }}
+              aria-label={recording ? "Stop rehearsal recording" : "Record rehearsal"}
+              title="Record your voice while the prompter runs"
+            >
+              {recording ? <Square className="h-3.5 w-3.5" /> : <Mic className="h-4 w-4" />}
+              {recording ? `REC ${formatTime(recordingTime)}` : "Rehearse"}
+            </button>
+
+            {takes.length > 0 && (
+              <button
+                onClick={() => {
+                  setPlaying(false);
+                  setReviewTake(takes[takes.length - 1]);
+                }}
+                className="flex h-10 items-center gap-2 rounded-full border px-4 text-xs font-semibold"
+                style={{
+                  borderColor: theme.accent,
+                  backgroundColor: theme.accent + "1a",
+                  color: theme.accent,
+                }}
+                aria-label="Review rehearsal recordings"
+              >
+                <History className="h-4 w-4" /> Review ({takes.length})
+              </button>
+            )}
+            {recError && (
+              <span className="text-xs font-medium" style={{ color: "#f87171" }}>
+                {recError}
+              </span>
+            )}
+
+
             {(() => {
               const over = stage === "over";
               const alerting = visualAlerts && (stage === "warn" || stage === "final");
