@@ -21,6 +21,10 @@ import {
   Bell,
   Eye,
   Volume2,
+  Mic,
+  Square,
+  Download,
+  History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
