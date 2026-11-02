@@ -212,6 +212,38 @@ function parseTimeInput(value: string): number {
   return 0;
 }
 
+/* ------------------------------ rehearsal takes ---------------------------- */
+
+/** A point on the recorded timeline: t seconds into the take, scrollTop y. */
+interface Marker {
+  t: number;
+  y: number;
+}
+
+interface Take {
+  id: number;
+  url: string;
+  blob: Blob;
+  duration: number;
+  markers: Marker[];
+  startedAtElapsed: number;
+}
+
+/** Interpolated scrollTop for time t within a take. */
+function scrollPosAt(markers: Marker[], t: number): number {
+  if (!markers.length) return 0;
+  if (t <= markers[0].t) return markers[0].y;
+  for (let i = 0; i < markers.length - 1; i++) {
+    if (t <= markers[i + 1].t) {
+      const a = markers[i];
+      const b = markers[i + 1];
+      const f = b.t > a.t ? (t - a.t) / (b.t - a.t) : 0;
+      return a.y + (b.y - a.y) * f;
+    }
+  }
+  return markers[markers.length - 1].y;
+}
+
 /* ---------------------------------- app ----------------------------------- */
 
 function Index() {
