@@ -550,6 +550,115 @@ function Prompter({
     };
   }, []);
 
+  /* ------------------------- rehearsal recording ------------------------- */
+  const [recording, setRecording] = useState(false);
+  const [recError, setRecError] = useState<string | null>(null);
+  const [takes, setTakes] = useState<Take[]>([]);
+  const [reviewTake, setReviewTake] = useState<Take | null>(null);
+  const mediaRecRef = useRef<MediaRecorder | null>(null);
+  const recChunksRef = useRef<Blob[]>([]);
+  const recStartElapsedRef = useRef(0);
+  const markersRef = useRef<Marker[]>([]);
+  const markerTimerRef = useRef<ReturnType<typeof setInterval>>(undefined);
+  const elapsedRef = useRef(0);
+  const reviewOpenRef = useRef(false);
+  elapsedRef.current = elapsed;
+  reviewOpenRef.current = reviewTake !== null;
+
+  const stopRecording = useCallback(() => {
+    clearInterval(markerTimerRef.current);
+    const rec = mediaRecRef.current;
+    mediaRecRef.current = null;
+    if (rec && rec.state !== "inactive") {
+      try {
+        rec.stop();
+      } catch {
+        /* already stopped */
+      }
+    }
+    setRecording(false);
+  }, []);
+  const stopRecordingRef = useRef(stopRecording);
+  stopRecordingRef.current = stopRecording;
+
+  const startRecording = async () => {
+    setRecError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream);
+      mediaRecRef.current = rec;
+      recChunksRef.current = [];
+      markersRef.current = [];
+      recStartElapsedRef.current = elapsedRef.current;
+      rec.ondataavailable = (e) => {
+        if (e.data.size > 0) recChunksRef.current.push(e.data);
+      };
+      rec.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(recChunksRef.current, { type: rec.mimeType || "audio/webm" });
+        if (blob.size > 0 && markersRef.current.length > 1) {
+          const duration = markersRef.current[markersRef.current.length - 1].t;
+          setTakes((tk) => [
+            ...tk,
+            {
+              id: Date.now(),
+              url: URL.createObjectURL(blob),
+              blob,
+              duration,
+              markers: markersRef.current,
+              startedAtElapsed: recStartElapsedRef.current,
+            },
+          ]);
+        }
+      };
+      markerTimerRef.current = setInterval(() => {
+        const el = scrollRef.current;
+        if (el) {
+          markersRef.current.push({
+            t: Math.max(0, elapsedRef.current - recStartElapsedRef.current),
+            y: el.scrollTop,
+          });
+        }
+      }, 200);
+      rec.start(250);
+      setRecording(true);
+      if (!playingRef.current) setPlaying(true);
+    } catch {
+      setRecError("Microphone access was denied — allow mic access to rehearse.");
+    }
+  };
+
+  /* pause/resume the recorder in lockstep with the prompter timer */
+  useEffect(() => {
+    const rec = mediaRecRef.current;
+    if (!rec || !recording) return;
+    try {
+      if (playing && rec.state === "paused") rec.resume();
+      else if (!playing && rec.state === "recording") rec.pause();
+    } catch {
+      /* recorder state race — harmless */
+    }
+  }, [playing, recording]);
+
+  /* stop recording + release blob URLs when leaving the prompter */
+  useEffect(() => {
+    return () => {
+      clearInterval(markerTimerRef.current);
+      const rec = mediaRecRef.current;
+      if (rec && rec.state !== "inactive") {
+        try {
+          rec.onstop = null;
+          rec.stream.getTracks().forEach((t) => t.stop());
+          rec.stop();
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+  }, []);
+
+  const recordingTime = recording ? Math.max(0, elapsed - recStartElapsedRef.current) : 0;
+
   const [progress, setProgress] = useState(0);
   const onScroll = () => {
     const el = scrollRef.current;
