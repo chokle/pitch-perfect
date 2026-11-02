@@ -231,17 +231,18 @@ interface Take {
 
 /** Interpolated scrollTop for time t within a take. */
 function scrollPosAt(markers: Marker[], t: number): number {
-  if (!markers.length) return 0;
-  if (t <= markers[0].t) return markers[0].y;
+  const first = markers[0];
+  if (!first) return 0;
+  if (t <= first.t) return first.y;
   for (let i = 0; i < markers.length - 1; i++) {
-    if (t <= markers[i + 1].t) {
-      const a = markers[i];
-      const b = markers[i + 1];
+    const a = markers[i];
+    const b = markers[i + 1];
+    if (a && b && t <= b.t) {
       const f = b.t > a.t ? (t - a.t) / (b.t - a.t) : 0;
       return a.y + (b.y - a.y) * f;
     }
   }
-  return markers[markers.length - 1].y;
+  return markers[markers.length - 1]?.y ?? first.y;
 }
 
 /* ---------------------------------- app ----------------------------------- */
@@ -599,7 +600,7 @@ function Prompter({
         stream.getTracks().forEach((t) => t.stop());
         const blob = new Blob(recChunksRef.current, { type: rec.mimeType || "audio/webm" });
         if (blob.size > 0 && markersRef.current.length > 1) {
-          const duration = markersRef.current[markersRef.current.length - 1].t;
+          const duration = markersRef.current[markersRef.current.length - 1]?.t ?? 0;
           setTakes((tk) => [
             ...tk,
             {
@@ -849,7 +850,8 @@ function Prompter({
               <button
                 onClick={() => {
                   setPlaying(false);
-                  setReviewTake(takes[takes.length - 1]);
+                  const latest = takes[takes.length - 1];
+                  if (latest) setReviewTake(latest);
                 }}
                 className="flex h-10 items-center gap-2 rounded-full border px-4 text-xs font-semibold"
                 style={{
