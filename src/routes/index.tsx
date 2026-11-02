@@ -478,6 +478,7 @@ function Prompter({
         el.scrollTop += pxPerSecond * dt;
         if (el.scrollTop >= el.scrollHeight - el.clientHeight - 1) {
           setPlaying(false);
+          stopRecordingRef.current();
           return;
         }
       }
@@ -491,6 +492,7 @@ function Prompter({
   /* keyboard shortcuts */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (reviewOpenRef.current) return; // review player owns the keyboard
       if (e.code === "Space") {
         e.preventDefault();
         setPlaying((p) => !p);
