@@ -21,6 +21,10 @@ import {
   Bell,
   Eye,
   Volume2,
+  Mic,
+  Square,
+  Download,
+  History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -206,6 +210,39 @@ function parseTimeInput(value: string): number {
   const m = v.match(/^(\d{1,3}):([0-5]?\d)$/);
   if (m) return Number(m[1]) * 60 + Number(m[2]);
   return 0;
+}
+
+/* ------------------------------ rehearsal takes ---------------------------- */
+
+/** A point on the recorded timeline: t seconds into the take, scrollTop y. */
+interface Marker {
+  t: number;
+  y: number;
+}
+
+interface Take {
+  id: number;
+  url: string;
+  blob: Blob;
+  duration: number;
+  markers: Marker[];
+  startedAtElapsed: number;
+}
+
+/** Interpolated scrollTop for time t within a take. */
+function scrollPosAt(markers: Marker[], t: number): number {
+  const first = markers[0];
+  if (!first) return 0;
+  if (t <= first.t) return first.y;
+  for (let i = 0; i < markers.length - 1; i++) {
+    const a = markers[i];
+    const b = markers[i + 1];
+    if (a && b && t <= b.t) {
+      const f = b.t > a.t ? (t - a.t) / (b.t - a.t) : 0;
+      return a.y + (b.y - a.y) * f;
+    }
+  }
+  return markers[markers.length - 1]?.y ?? first.y;
 }
 
 /* ---------------------------------- app ----------------------------------- */
@@ -442,6 +479,7 @@ function Prompter({
         el.scrollTop += pxPerSecond * dt;
         if (el.scrollTop >= el.scrollHeight - el.clientHeight - 1) {
           setPlaying(false);
+          stopRecordingRef.current();
           return;
         }
       }
@@ -455,6 +493,7 @@ function Prompter({
   /* keyboard shortcuts */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (reviewOpenRef.current) return; // review player owns the keyboard
       if (e.code === "Space") {
         e.preventDefault();
         setPlaying((p) => !p);
@@ -513,6 +552,115 @@ function Prompter({
       clearTimeout(hideTimerRef.current);
     };
   }, []);
+
+  /* ------------------------- rehearsal recording ------------------------- */
+  const [recording, setRecording] = useState(false);
+  const [recError, setRecError] = useState<string | null>(null);
+  const [takes, setTakes] = useState<Take[]>([]);
+  const [reviewTake, setReviewTake] = useState<Take | null>(null);
+  const mediaRecRef = useRef<MediaRecorder | null>(null);
+  const recChunksRef = useRef<Blob[]>([]);
+  const recStartElapsedRef = useRef(0);
+  const markersRef = useRef<Marker[]>([]);
+  const markerTimerRef = useRef<ReturnType<typeof setInterval>>(undefined);
+  const elapsedRef = useRef(0);
+  const reviewOpenRef = useRef(false);
+  elapsedRef.current = elapsed;
+  reviewOpenRef.current = reviewTake !== null;
+
+  const stopRecording = useCallback(() => {
+    clearInterval(markerTimerRef.current);
+    const rec = mediaRecRef.current;
+    mediaRecRef.current = null;
+    if (rec && rec.state !== "inactive") {
+      try {
+        rec.stop();
+      } catch {
+        /* already stopped */
+      }
+    }
+    setRecording(false);
+  }, []);
+  const stopRecordingRef = useRef(stopRecording);
+  stopRecordingRef.current = stopRecording;
+
+  const startRecording = async () => {
+    setRecError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream);
+      mediaRecRef.current = rec;
+      recChunksRef.current = [];
+      markersRef.current = [];
+      recStartElapsedRef.current = elapsedRef.current;
+      rec.ondataavailable = (e) => {
+        if (e.data.size > 0) recChunksRef.current.push(e.data);
+      };
+      rec.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const blob = new Blob(recChunksRef.current, { type: rec.mimeType || "audio/webm" });
+        if (blob.size > 0 && markersRef.current.length > 1) {
+          const duration = markersRef.current[markersRef.current.length - 1]?.t ?? 0;
+          setTakes((tk) => [
+            ...tk,
+            {
+              id: Date.now(),
+              url: URL.createObjectURL(blob),
+              blob,
+              duration,
+              markers: markersRef.current,
+              startedAtElapsed: recStartElapsedRef.current,
+            },
+          ]);
+        }
+      };
+      markerTimerRef.current = setInterval(() => {
+        const el = scrollRef.current;
+        if (el) {
+          markersRef.current.push({
+            t: Math.max(0, elapsedRef.current - recStartElapsedRef.current),
+            y: el.scrollTop,
+          });
+        }
+      }, 200);
+      rec.start(250);
+      setRecording(true);
+      if (!playingRef.current) setPlaying(true);
+    } catch {
+      setRecError("Microphone access was denied — allow mic access to rehearse.");
+    }
+  };
+
+  /* pause/resume the recorder in lockstep with the prompter timer */
+  useEffect(() => {
+    const rec = mediaRecRef.current;
+    if (!rec || !recording) return;
+    try {
+      if (playing && rec.state === "paused") rec.resume();
+      else if (!playing && rec.state === "recording") rec.pause();
+    } catch {
+      /* recorder state race — harmless */
+    }
+  }, [playing, recording]);
+
+  /* stop recording + release blob URLs when leaving the prompter */
+  useEffect(() => {
+    return () => {
+      clearInterval(markerTimerRef.current);
+      const rec = mediaRecRef.current;
+      if (rec && rec.state !== "inactive") {
+        try {
+          rec.onstop = null;
+          rec.stream.getTracks().forEach((t) => t.stop());
+          rec.stop();
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+  }, []);
+
+  const recordingTime = recording ? Math.max(0, elapsed - recStartElapsedRef.current) : 0;
 
   const [progress, setProgress] = useState(0);
   const onScroll = () => {
@@ -679,6 +827,49 @@ function Prompter({
             >
               <RotateCcw className="h-4 w-4" />
             </button>
+
+            <button
+              onClick={() => (recording ? stopRecording() : void startRecording())}
+              className={cn(
+                "flex h-10 items-center gap-2 rounded-full border px-4 text-xs font-semibold",
+                recording && "animate-pulse"
+              )}
+              style={{
+                borderColor: recording ? "#f87171" : theme.dim + "66",
+                backgroundColor: recording ? "#f8717122" : "transparent",
+                color: recording ? "#f87171" : theme.fg,
+              }}
+              aria-label={recording ? "Stop rehearsal recording" : "Record rehearsal"}
+              title="Record your voice while the prompter runs"
+            >
+              {recording ? <Square className="h-3.5 w-3.5" /> : <Mic className="h-4 w-4" />}
+              {recording ? `REC ${formatTime(recordingTime)}` : "Rehearse"}
+            </button>
+
+            {takes.length > 0 && (
+              <button
+                onClick={() => {
+                  setPlaying(false);
+                  const latest = takes[takes.length - 1];
+                  if (latest) setReviewTake(latest);
+                }}
+                className="flex h-10 items-center gap-2 rounded-full border px-4 text-xs font-semibold"
+                style={{
+                  borderColor: theme.accent,
+                  backgroundColor: theme.accent + "1a",
+                  color: theme.accent,
+                }}
+                aria-label="Review rehearsal recordings"
+              >
+                <History className="h-4 w-4" /> Review ({takes.length})
+              </button>
+            )}
+            {recError && (
+              <span className="text-xs font-medium" style={{ color: "#f87171" }}>
+                {recError}
+              </span>
+            )}
+
 
             {(() => {
               const over = stage === "over";
@@ -990,6 +1181,230 @@ function Prompter({
           </div>
         </div>
       </div>
+
+      {/* rehearsal review overlay */}
+      {reviewTake && (
+        <ReviewPlayer
+          take={reviewTake}
+          takes={takes}
+          onSelect={setReviewTake}
+          onClose={() => setReviewTake(null)}
+          settings={settings}
+          script={script}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ----------------------------- review player ------------------------------ */
+
+function ReviewPlayer({
+  take,
+  takes,
+  onSelect,
+  onClose,
+  settings,
+  script,
+}: {
+  take: Take;
+  takes: Take[];
+  onSelect: (t: Take) => void;
+  onClose: () => void;
+  settings: Settings;
+  script: string;
+}) {
+  const theme = THEMES[settings.theme];
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [cur, setCur] = useState(0);
+  const [dur, setDur] = useState(take.duration);
+
+  const scrollToTime = useCallback(
+    (t: number) => {
+      const el = scrollRef.current;
+      if (el) el.scrollTop = scrollPosAt(take.markers, t);
+    },
+    [take]
+  );
+
+  /* reset when switching takes */
+  useEffect(() => {
+    setPlaying(false);
+    setCur(0);
+    setDur(take.duration);
+    scrollRef.current?.scrollTo({ top: scrollPosAt(take.markers, 0) });
+    const a = audioRef.current;
+    if (a) {
+      a.currentTime = 0;
+    }
+  }, [take]);
+
+  /* Space toggles playback; Esc closes */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === "Space") {
+        e.preventDefault();
+        const a = audioRef.current;
+        if (!a) return;
+        if (a.paused) void a.play();
+        else a.pause();
+      } else if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const ext = take.blob.type.includes("ogg") ? "ogg" : take.blob.type.includes("mp4") ? "m4a" : "webm";
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex flex-col"
+      style={{ backgroundColor: theme.bg, color: theme.fg }}
+    >
+      {/* header */}
+      <div
+        className="flex flex-wrap items-center gap-3 border-b px-5 py-3"
+        style={{ borderColor: theme.dim + "44" }}
+      >
+        <Mic className="h-4 w-4" style={{ color: theme.accent }} />
+        <span className="font-display text-sm font-semibold tracking-tight">
+          Rehearsal review
+        </span>
+        {takes.length > 1 && (
+          <div className="flex items-center gap-1.5">
+            {takes.map((t, i) => (
+              <button
+                key={t.id}
+                onClick={() => onSelect(t)}
+                className="rounded-full border px-3 py-1 text-xs font-medium"
+                style={{
+                  borderColor: t.id === take.id ? theme.accent : theme.dim + "55",
+                  color: t.id === take.id ? theme.accent : theme.dim,
+                }}
+              >
+                Take {i + 1}
+              </button>
+            ))}
+          </div>
+        )}
+        <span className="font-mono text-xs" style={{ color: theme.dim }}>
+          {formatTime(dur)}
+        </span>
+        <div className="flex-1" />
+        <a
+          href={take.url}
+          download={`rehearsal-take.${ext}`}
+          className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium"
+          style={{ borderColor: theme.dim + "66", color: theme.fg }}
+        >
+          <Download className="h-3.5 w-3.5" /> Save audio
+        </a>
+        <button
+          onClick={onClose}
+          className="flex h-8 w-8 items-center justify-center rounded-full border"
+          style={{ borderColor: theme.dim + "66", color: theme.fg }}
+          aria-label="Close review (Esc)"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* script timeline, scrolls in sync with the audio */}
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto"
+        style={{ scrollbarWidth: "none" }}
+      >
+        <div
+          className="mx-auto font-display font-medium"
+          style={{
+            maxWidth: `${100 - settings.margin * 2}%`,
+            fontSize: `${settings.fontSize}px`,
+            lineHeight: 1.45,
+            paddingTop: "45vh",
+            paddingBottom: "70vh",
+            whiteSpace: "pre-wrap",
+            letterSpacing: "0.01em",
+          }}
+        >
+          {script}
+        </div>
+      </div>
+
+      {/* eye-line marker */}
+      {settings.eyeLine && (
+        <div className="pointer-events-none absolute inset-x-0 z-10" style={{ top: "38%" }}>
+          <div
+            className="mx-6 border-t border-dashed"
+            style={{ borderColor: theme.accent + "55" }}
+          />
+        </div>
+      )}
+
+      {/* playback bar */}
+      <div
+        className="flex items-center gap-4 border-t px-5 py-4"
+        style={{ borderColor: theme.dim + "44", backgroundColor: theme.bg }}
+      >
+        <button
+          onClick={() => {
+            const a = audioRef.current;
+            if (!a) return;
+            if (a.paused) void a.play();
+            else a.pause();
+          }}
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
+          style={{ backgroundColor: theme.accent, color: theme.bg }}
+          aria-label={playing ? "Pause playback" : "Play recording (Space)"}
+        >
+          {playing ? <Pause className="h-5 w-5" /> : <Play className="ml-0.5 h-5 w-5" />}
+        </button>
+        <span className="w-12 text-right font-mono text-xs" style={{ color: theme.dim }}>
+          {formatTime(cur)}
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={Math.max(0.1, dur)}
+          step={0.1}
+          value={Math.min(cur, dur)}
+          onChange={(e) => {
+            const a = audioRef.current;
+            const v = Number(e.target.value);
+            if (a) a.currentTime = v;
+            setCur(v);
+            scrollToTime(v);
+          }}
+          className="flex-1 accent-current"
+          style={{ color: theme.accent }}
+          aria-label="Seek"
+        />
+        <span className="w-12 font-mono text-xs" style={{ color: theme.dim }}>
+          {formatTime(dur)}
+        </span>
+      </div>
+
+      <audio
+        ref={audioRef}
+        src={take.url}
+        preload="auto"
+        onLoadedMetadata={(e) => {
+          const d = e.currentTarget.duration;
+          if (Number.isFinite(d) && d > 0) setDur(d);
+        }}
+        onTimeUpdate={(e) => {
+          const t = e.currentTarget.currentTime;
+          setCur(t);
+          scrollToTime(t);
+        }}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => setPlaying(false)}
+      />
     </div>
   );
 }
