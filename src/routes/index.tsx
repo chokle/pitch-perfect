@@ -1179,6 +1179,230 @@ function Prompter({
           </div>
         </div>
       </div>
+
+      {/* rehearsal review overlay */}
+      {reviewTake && (
+        <ReviewPlayer
+          take={reviewTake}
+          takes={takes}
+          onSelect={setReviewTake}
+          onClose={() => setReviewTake(null)}
+          settings={settings}
+          script={script}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ----------------------------- review player ------------------------------ */
+
+function ReviewPlayer({
+  take,
+  takes,
+  onSelect,
+  onClose,
+  settings,
+  script,
+}: {
+  take: Take;
+  takes: Take[];
+  onSelect: (t: Take) => void;
+  onClose: () => void;
+  settings: Settings;
+  script: string;
+}) {
+  const theme = THEMES[settings.theme];
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [cur, setCur] = useState(0);
+  const [dur, setDur] = useState(take.duration);
+
+  const scrollToTime = useCallback(
+    (t: number) => {
+      const el = scrollRef.current;
+      if (el) el.scrollTop = scrollPosAt(take.markers, t);
+    },
+    [take]
+  );
+
+  /* reset when switching takes */
+  useEffect(() => {
+    setPlaying(false);
+    setCur(0);
+    setDur(take.duration);
+    scrollRef.current?.scrollTo({ top: scrollPosAt(take.markers, 0) });
+    const a = audioRef.current;
+    if (a) {
+      a.currentTime = 0;
+    }
+  }, [take]);
+
+  /* Space toggles playback; Esc closes */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code === "Space") {
+        e.preventDefault();
+        const a = audioRef.current;
+        if (!a) return;
+        if (a.paused) void a.play();
+        else a.pause();
+      } else if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const ext = take.blob.type.includes("ogg") ? "ogg" : take.blob.type.includes("mp4") ? "m4a" : "webm";
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex flex-col"
+      style={{ backgroundColor: theme.bg, color: theme.fg }}
+    >
+      {/* header */}
+      <div
+        className="flex flex-wrap items-center gap-3 border-b px-5 py-3"
+        style={{ borderColor: theme.dim + "44" }}
+      >
+        <Mic className="h-4 w-4" style={{ color: theme.accent }} />
+        <span className="font-display text-sm font-semibold tracking-tight">
+          Rehearsal review
+        </span>
+        {takes.length > 1 && (
+          <div className="flex items-center gap-1.5">
+            {takes.map((t, i) => (
+              <button
+                key={t.id}
+                onClick={() => onSelect(t)}
+                className="rounded-full border px-3 py-1 text-xs font-medium"
+                style={{
+                  borderColor: t.id === take.id ? theme.accent : theme.dim + "55",
+                  color: t.id === take.id ? theme.accent : theme.dim,
+                }}
+              >
+                Take {i + 1}
+              </button>
+            ))}
+          </div>
+        )}
+        <span className="font-mono text-xs" style={{ color: theme.dim }}>
+          {formatTime(dur)}
+        </span>
+        <div className="flex-1" />
+        <a
+          href={take.url}
+          download={`rehearsal-take.${ext}`}
+          className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium"
+          style={{ borderColor: theme.dim + "66", color: theme.fg }}
+        >
+          <Download className="h-3.5 w-3.5" /> Save audio
+        </a>
+        <button
+          onClick={onClose}
+          className="flex h-8 w-8 items-center justify-center rounded-full border"
+          style={{ borderColor: theme.dim + "66", color: theme.fg }}
+          aria-label="Close review (Esc)"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      {/* script timeline, scrolls in sync with the audio */}
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto"
+        style={{ scrollbarWidth: "none" }}
+      >
+        <div
+          className="mx-auto font-display font-medium"
+          style={{
+            maxWidth: `${100 - settings.margin * 2}%`,
+            fontSize: `${settings.fontSize}px`,
+            lineHeight: 1.45,
+            paddingTop: "45vh",
+            paddingBottom: "70vh",
+            whiteSpace: "pre-wrap",
+            letterSpacing: "0.01em",
+          }}
+        >
+          {script}
+        </div>
+      </div>
+
+      {/* eye-line marker */}
+      {settings.eyeLine && (
+        <div className="pointer-events-none absolute inset-x-0 z-10" style={{ top: "38%" }}>
+          <div
+            className="mx-6 border-t border-dashed"
+            style={{ borderColor: theme.accent + "55" }}
+          />
+        </div>
+      )}
+
+      {/* playback bar */}
+      <div
+        className="flex items-center gap-4 border-t px-5 py-4"
+        style={{ borderColor: theme.dim + "44", backgroundColor: theme.bg }}
+      >
+        <button
+          onClick={() => {
+            const a = audioRef.current;
+            if (!a) return;
+            if (a.paused) void a.play();
+            else a.pause();
+          }}
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full"
+          style={{ backgroundColor: theme.accent, color: theme.bg }}
+          aria-label={playing ? "Pause playback" : "Play recording (Space)"}
+        >
+          {playing ? <Pause className="h-5 w-5" /> : <Play className="ml-0.5 h-5 w-5" />}
+        </button>
+        <span className="w-12 text-right font-mono text-xs" style={{ color: theme.dim }}>
+          {formatTime(cur)}
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={Math.max(0.1, dur)}
+          step={0.1}
+          value={Math.min(cur, dur)}
+          onChange={(e) => {
+            const a = audioRef.current;
+            const v = Number(e.target.value);
+            if (a) a.currentTime = v;
+            setCur(v);
+            scrollToTime(v);
+          }}
+          className="flex-1 accent-current"
+          style={{ color: theme.accent }}
+          aria-label="Seek"
+        />
+        <span className="w-12 font-mono text-xs" style={{ color: theme.dim }}>
+          {formatTime(dur)}
+        </span>
+      </div>
+
+      <audio
+        ref={audioRef}
+        src={take.url}
+        preload="auto"
+        onLoadedMetadata={(e) => {
+          const d = e.currentTarget.duration;
+          if (Number.isFinite(d) && d > 0) setDur(d);
+        }}
+        onTimeUpdate={(e) => {
+          const t = e.currentTarget.currentTime;
+          setCur(t);
+          scrollToTime(t);
+        }}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => setPlaying(false)}
+      />
     </div>
   );
 }
