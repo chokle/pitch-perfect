@@ -27,6 +27,8 @@ import {
   History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAiCoach, CoachPaywall, coachTrialUsed } from "@/components/AiCoach";
+import { Bot } from "lucide-react";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -677,6 +679,31 @@ function Prompter({
 
   const upd = (patch: Partial<Settings>) => onSettings({ ...settings, ...patch });
 
+  /* ------------------------------ AI coach (paid, opt-in) ------------------------------ */
+  const [coachOn, setCoachOn] = useState(false);
+  const [paywall, setPaywall] = useState(false);
+  const [trialUsed, setTrialUsed] = useState(false);
+  useEffect(() => setTrialUsed(coachTrialUsed()), []);
+  const coach = useAiCoach({
+    active: coachOn,
+    playing,
+    trial: true,
+    targetWpm: settings.wpm,
+    getExpected: () => {
+      const el = scrollRef.current;
+      const frac = el ? el.scrollTop / Math.max(1, el.scrollHeight - el.clientHeight) : 0;
+      const ws = script.split(/\s+/);
+      const at = Math.floor(frac * ws.length);
+      return ws.slice(Math.max(0, at - 40), at + 40).join(" ");
+    },
+    onTrialEnd: () => {
+      setCoachOn(false);
+      setTrialUsed(true);
+      setPaywall(true);
+    },
+  });
+  const showTip = coachOn && coach.tip && coach.tip.tip && Date.now() - coach.tip.at < 6000;
+
   const flipTransform = `${settings.mirrorH ? "scaleX(-1)" : ""} ${settings.mirrorV ? "scaleY(-1)" : ""}`.trim();
 
   return (
@@ -691,6 +718,29 @@ function Prompter({
           style={{ width: `${progress * 100}%`, backgroundColor: theme.accent }}
         />
       </div>
+
+      {paywall && (
+        <CoachPaywall
+          trialUsed={trialUsed}
+          onClose={() => setPaywall(false)}
+          onTrial={() => {
+            setPaywall(false);
+            setCoachOn(true);
+            if (!playingRef.current) setPlaying(true);
+          }}
+        />
+      )}
+      {showTip && coach.tip && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-28 z-40 flex justify-center px-4">
+          <div className="flex items-center gap-3 rounded-full border border-primary/40 bg-card/95 px-5 py-3 text-card-foreground shadow-xl">
+            <Bot className="h-5 w-5 text-primary" />
+            <span className="text-base font-semibold">{coach.tip.tip}</span>
+            <span className="font-mono text-xs text-muted-foreground">
+              {coach.tip.wpm} wpm · {coach.tip.pace} · {coach.tip.tone}
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* overtime banner */}
       {stage === "over" && visualAlerts && (
@@ -863,6 +913,27 @@ function Prompter({
               >
                 <History className="h-4 w-4" /> Review ({takes.length})
               </button>
+            )}
+            <button
+              onClick={() => (coachOn ? setCoachOn(false) : setPaywall(true))}
+              className="flex h-10 items-center gap-2 rounded-full border px-4 text-xs font-semibold"
+              style={{
+                borderColor: coachOn ? theme.accent : theme.dim + "66",
+                backgroundColor: coachOn ? theme.accent + "1a" : "transparent",
+                color: coachOn ? theme.accent : theme.fg,
+              }}
+              aria-pressed={coachOn}
+              aria-label="Toggle AI coach"
+              title="Live AI feedback on pace and tone (uses AI credits)"
+            >
+              <Bot className="h-4 w-4" />
+              {coachOn ? (coach.listening ? "Coach: listening" : "Coach: on") : "AI Coach"}
+              {!coachOn && <Lock className="h-3 w-3 opacity-70" />}
+            </button>
+            {coachOn && coach.error && (
+              <span className="text-xs font-medium" style={{ color: "#f87171" }}>
+                {coach.error}
+              </span>
             )}
             {recError && (
               <span className="text-xs font-medium" style={{ color: "#f87171" }}>
