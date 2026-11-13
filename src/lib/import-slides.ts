@@ -8,7 +8,8 @@ export async function importSlides(files: File[]): Promise<PitchSlide[]> {
       const pdfjs = await import("pdfjs-dist");
       const { default: workerUrl } = await import("pdfjs-dist/build/pdf.worker.min.mjs?url");
       pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
-      const pdf = await pdfjs.getDocument({ data: await file.arrayBuffer() }).promise;
+      const task = pdfjs.getDocument({ data: await file.arrayBuffer() });
+      const pdf = await task.promise;
       try {
         if (pdf.numPages + slides.length > 60) throw new Error("Upload up to 60 slides at a time.");
         for (let n = 1; n <= pdf.numPages; n++) {
@@ -22,7 +23,7 @@ export async function importSlides(files: File[]): Promise<PitchSlide[]> {
           slides.push({ id: crypto.randomUUID(), name: `${file.name} · ${n}`, src: canvas.toDataURL("image/jpeg", 0.9), start: slides.length * 15 });
           page.cleanup();
         }
-      } finally { await pdf.destroy(); }
+      } finally { await task.destroy(); }
     } else if (/^image\/(png|jpeg|webp)$/.test(file.type)) {
       const src = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
