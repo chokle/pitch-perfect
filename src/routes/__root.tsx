@@ -81,12 +81,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "PitchPrompter" },
       { name: "description", content: "Rehearse your pitch with a teleprompter and synchronized slides." },
-      { name: "author", content: "Lovable" },
       { property: "og:title", content: "PitchPrompter" },
       { property: "og:description", content: "Rehearse your pitch with synchronized slides." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:site", content: "@Lovable" },
     ],
     links: [
       { rel: "preconnect", href: "https://fonts.googleapis.com" },

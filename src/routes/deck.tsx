@@ -13,7 +13,7 @@ export const Route = createFileRoute("/deck")({
     { property: "og:title", content: "Pitch deck — PitchPrompter" },
     { property: "og:description", content: "Review your slides and sync each one to your pitch countdown." },
     { property: "og:type", content: "website" },
-    { name: "twitter:card", content: "summary" },
+    { name: "twitter:card", content: "summary_large_image" },
   ] }),
   component: DeckPage,
 });
