@@ -28,7 +28,14 @@ import {
   Square,
   Download,
   History,
+  SlidersHorizontal,
+  PanelTopClose,
+  PanelTopOpen,
+  Presentation,
 } from "lucide-react";
+import { Sheet, SheetContent, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { readScriptFile } from "@/lib/read-script";
+import { createSampleDeck } from "@/lib/sample-deck";
 import { cn } from "@/lib/utils";
 import { useAiCoach, CoachPaywall, coachTrialUsed } from "@/components/AiCoach";
 import { Bot } from "lucide-react";
@@ -49,7 +56,7 @@ export const Route = createFileRoute("/")({
           "A free teleprompter for your pitch: paste your script, adjust speed and type, mirror for prompter glass, and present in fullscreen.",
       },
       { property: "og:type", content: "website" },
-      { name: "twitter:card", content: "summary" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: Index,
@@ -319,13 +326,23 @@ function Editor({
   onStart: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const { slides, totalTime } = usePitchDeck();
+  const { slides, setSlides, setFinalSlideSeconds, totalTime } = usePitchDeck();
+  const [fileError, setFileError] = useState("");
 
-  const handleFile = (file: File | undefined) => {
+  const handleFile = async (file: File | undefined) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => onScript(String(reader.result ?? ""));
-    reader.readAsText(file);
+    setFileError("");
+    try {
+      onScript(await readScriptFile(file));
+    } catch {
+      setFileError("Could not read that file. Try .txt, .md or .docx.");
+    }
+  };
+
+  const loadSampleDeck = () => {
+    setSlides(createSampleDeck());
+    setFinalSlideSeconds(15);
+    onScript(SAMPLES[0]?.text ?? "");
   };
 
   return (
@@ -344,20 +361,43 @@ function Editor({
             </p>
           </div>
         </div>
-        <button
-          onClick={onStart}
-          disabled={words === 0}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <Play className="h-4 w-4" />
-          Start prompting
-        </button>
+        <div className="flex flex-col items-end gap-1">
+          <button
+            onClick={onStart}
+            disabled={words === 0}
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Play className="h-4 w-4" />
+            Start prompting
+          </button>
+          {words === 0 && <span className="text-xs text-muted-foreground">Add a script to start</span>}
+        </div>
       </header>
 
       <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-6 py-8">
+        <ul className="grid gap-2 text-sm sm:grid-cols-3">
+          {[
+            { Icon: Presentation, label: "Upload your deck" },
+            { Icon: Timer, label: "Rehearse to the clock" },
+            { Icon: Sparkles, label: "AI Coach feedback" },
+          ].map(({ Icon, label }) => (
+            <li key={label} className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 font-medium text-card-foreground">
+              <Icon className="h-4 w-4 text-primary" /> {label}
+            </li>
+          ))}
+        </ul>
         <div className="flex items-center justify-between gap-3 border-b border-border pb-4">
-          <span className="text-sm text-muted-foreground">{slides.length ? `${slides.length} slides · ${formatTime(totalTime)} pitch` : "Pitch deck"}</span>
-          <Button variant="outline" asChild><Link to="/deck"><Upload />{slides.length ? "Edit slide cues" : "Add slides"}</Link></Button>
+          <div className="min-w-0 text-sm text-muted-foreground">
+            {slides.length ? (
+              `${slides.length} slides · ${formatTime(totalTime)} pitch`
+            ) : (
+              <>
+                <span className="block">Pitch deck</span>
+                <span className="block text-xs">PDF, PNG, JPG or WebP · export PowerPoint/Keynote as PDF</span>
+              </>
+            )}
+          </div>
+          <Button variant="outline" asChild className="shrink-0"><Link to="/deck">{slides.length ? <Timer /> : <Upload />}{slides.length ? "Edit slide cues" : "Add slides"}</Link></Button>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -372,24 +412,31 @@ function Editor({
               {s.label}
             </button>
           ))}
+          <button
+            onClick={loadSampleDeck}
+            className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3.5 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-primary/20"
+          >
+            <Presentation className="h-3.5 w-3.5" /> Try sample deck
+          </button>
           <span className="mx-1 h-4 w-px bg-border" />
           <button
             onClick={() => fileRef.current?.click()}
             className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3.5 py-1.5 text-xs font-medium text-card-foreground transition-colors hover:bg-accent"
           >
-            <Upload className="h-3.5 w-3.5" /> Upload .txt
+            <Upload className="h-3.5 w-3.5" /> Upload script (.txt, .md, .docx)
           </button>
           <input
             ref={fileRef}
             type="file"
-            accept=".txt,.md,text/plain"
+            accept=".txt,.md,.docx,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             className="hidden"
             onChange={(e) => {
-              handleFile(e.target.files?.[0]);
+              void handleFile(e.target.files?.[0]);
               e.target.value = "";
             }}
           />
         </div>
+        {fileError && <p role="alert" className="-mt-3 text-sm text-destructive">{fileError}</p>}
 
         <textarea
           value={script}
@@ -397,7 +444,7 @@ function Editor({
           placeholder="Paste or type your pitch here…
 
 Tip: short paragraphs read best on a prompter. Add a blank line wherever you want to breathe."
-          className="min-h-[50vh] w-full flex-1 resize-y rounded-xl border border-border bg-card p-6 font-mono text-base leading-relaxed text-card-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+          className="min-h-[50vh] w-full flex-1 resize-y rounded-xl border border-border bg-card p-6 font-sans text-base leading-relaxed text-card-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
         />
 
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
@@ -433,7 +480,12 @@ function Prompter({
   const [playing, setPlaying] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const { slides } = usePitchDeck();
-  const activeSlide = validSlideTimes(slides) ? slides[slideAtTime(slides, elapsed)] : undefined;
+  const [slideCollapsed, setSlideCollapsed] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsOpenRef = useRef(false);
+  settingsOpenRef.current = settingsOpen;
+  const deckSlide = validSlideTimes(slides) ? slides[slideAtTime(slides, elapsed)] : undefined;
+  const activeSlide = slideCollapsed ? undefined : deckSlide;
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -511,7 +563,7 @@ function Prompter({
   /* keyboard shortcuts */
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (reviewOpenRef.current) return; // review player owns the keyboard
+      if (reviewOpenRef.current || settingsOpenRef.current) return; // review player / settings drawer own the keyboard
       if (e.code === "Space") {
         e.preventDefault();
         setPlaying((p) => !p);
@@ -565,11 +617,24 @@ function Prompter({
     };
     poke();
     window.addEventListener("mousemove", poke);
+    window.addEventListener("pointerdown", poke);
     return () => {
       window.removeEventListener("mousemove", poke);
+      window.removeEventListener("pointerdown", poke);
       clearTimeout(hideTimerRef.current);
     };
   }, []);
+
+  /* hide controls shortly after play starts (touch has no mousemove); show them on pause */
+  useEffect(() => {
+    clearTimeout(hideTimerRef.current);
+    if (playing && !settingsOpenRef.current) {
+      hideTimerRef.current = setTimeout(() => setShowControls(false), 2200);
+    } else {
+      setShowControls(true);
+    }
+    return () => clearTimeout(hideTimerRef.current);
+  }, [playing]);
 
   /* ------------------------- rehearsal recording ------------------------- */
   const [recording, setRecording] = useState(false);
@@ -775,7 +840,12 @@ function Prompter({
 
       {/* time-remaining pill (top corner, visible even when controls hide) */}
       {hasTarget && stage !== "over" && (
-        <div className="pointer-events-none absolute right-4 top-4 z-30 flex items-center gap-2">
+        <div
+          className={cn(
+            "pointer-events-none absolute right-4 z-30 flex items-center gap-2",
+            activeSlide ? "top-[calc(28vh+0.75rem)] md:top-4" : "top-4"
+          )}
+        >
           {!playing && (
             <div
               className="rounded-full px-3 py-1.5 font-mono text-xs font-bold uppercase tracking-wider"
@@ -807,15 +877,34 @@ function Prompter({
               }`,
             }}
           >
-            -{formatTime(remaining)}
+            {formatTime(remaining)}
           </div>
         </div>
+      )}
+
+      {/* collapsed-slide toggle (when a deck is loaded but hidden) */}
+      {deckSlide && slideCollapsed && (
+        <button
+          onClick={() => setSlideCollapsed(false)}
+          className="absolute left-3 top-3 z-30 flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold"
+          style={{ borderColor: theme.dim + "66", color: theme.fg, backgroundColor: theme.bg }}
+          aria-label="Show slide"
+        >
+          <PanelTopOpen className="h-3.5 w-3.5" /> Slide
+        </button>
       )}
 
       {/* scrolling script */}
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
       {activeSlide && (
-        <aside className="z-10 flex h-[28vh] shrink-0 flex-col border-b border-border bg-background p-3 text-foreground md:h-auto md:w-[42%] md:justify-center md:border-r md:border-b-0" aria-label="Synchronized pitch slide">
+        <aside className="relative z-10 flex h-[28vh] shrink-0 flex-col border-b border-border bg-background p-3 text-foreground md:h-auto md:w-[42%] md:justify-center md:border-r md:border-b-0" aria-label="Synchronized pitch slide">
+          <button
+            onClick={() => setSlideCollapsed(true)}
+            className="absolute left-2 top-2 z-10 flex h-8 w-8 items-center justify-center rounded-full border border-border bg-background/90 text-foreground"
+            aria-label="Hide slide"
+          >
+            <PanelTopClose className="h-4 w-4" />
+          </button>
           <img src={activeSlide.src} alt={`Pitch slide ${slideAtTime(slides, elapsed) + 1}`} className="min-h-0 w-full flex-1 object-contain md:max-h-[65vh] md:flex-none" />
           <p className="mt-2 text-center font-mono text-xs text-muted-foreground">Slide {slideAtTime(slides, elapsed) + 1} / {slides.length}</p>
         </aside>
@@ -881,10 +970,11 @@ function Prompter({
           showControls || !playing ? "opacity-100" : "pointer-events-none opacity-0"
         )}
         style={{
-          background: `linear-gradient(to top, ${theme.bg}f2 55%, transparent)`,
+          backgroundColor: theme.bg,
+          borderTop: `1px solid ${theme.dim}44`,
         }}
       >
-        <div className="mx-auto flex max-w-5xl flex-col gap-3 px-6 pb-5 pt-10">
+        <div className="mx-auto flex max-w-5xl flex-col gap-3 px-4 pb-4 pt-3 sm:px-6">
           {/* transport row */}
           <div className="flex flex-wrap items-center gap-2">
             <button
@@ -919,7 +1009,9 @@ function Prompter({
               title="Record your voice while the prompter runs"
             >
               {recording ? <Square className="h-3.5 w-3.5" /> : <Mic className="h-4 w-4" />}
-              {recording ? `REC ${formatTime(recordingTime)}` : "Rehearse"}
+              <span className={cn(!recording && "hidden sm:inline")}>
+                {recording ? `REC ${formatTime(recordingTime)}` : "Rehearse"}
+              </span>
             </button>
 
             {takes.length > 0 && (
@@ -937,7 +1029,7 @@ function Prompter({
                 }}
                 aria-label="Review rehearsal recordings"
               >
-                <History className="h-4 w-4" /> Review ({takes.length})
+                <History className="h-4 w-4" /> <span className="hidden sm:inline">Review</span> ({takes.length})
               </button>
             )}
             <button
@@ -953,7 +1045,9 @@ function Prompter({
               title="Live AI feedback on pace and tone (uses AI credits)"
             >
               <Bot className="h-4 w-4" />
-              {coachOn ? (coach.listening ? "Coach: listening" : "Coach: on") : "AI Coach"}
+              <span className="hidden sm:inline">
+                {coachOn ? (coach.listening ? "Coach: listening" : "Coach: on") : "AI Coach"}
+              </span>
               {!coachOn && <Lock className="h-3 w-3 opacity-70" />}
             </button>
             {coachOn && coach.error && (
@@ -1004,7 +1098,7 @@ function Prompter({
                     <>
                       <span style={{ color: theme.dim }}>/</span>
                       <span style={{ color: chipColor, fontWeight: 700 }}>
-                        {over ? `+${formatTime(-remaining)} over` : `-${formatTime(remaining)}`}
+                        {over ? `+${formatTime(-remaining)} over` : `${formatTime(remaining)} left`}
                       </span>
                     </>
                   ) : (
@@ -1021,6 +1115,15 @@ function Prompter({
 
             <div className="flex-1" />
 
+            <button
+              onClick={() => setSettingsOpen(true)}
+              className="flex h-10 w-10 items-center justify-center rounded-full border"
+              style={{ borderColor: theme.dim + "66", color: theme.fg }}
+              aria-label="Open settings"
+              title="Speed, text size, timer, alerts"
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+            </button>
             <button
               onClick={toggleFullscreen}
               className="flex h-10 w-10 items-center justify-center rounded-full border"
@@ -1042,8 +1145,18 @@ function Prompter({
             </button>
           </div>
 
-          {/* settings row */}
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-3 text-xs" style={{ color: theme.dim }}>
+          {/* settings drawer */}
+          <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
+            <SheetContent
+              side="bottom"
+              className="max-h-[85vh] overflow-y-auto border-t"
+              style={{ backgroundColor: theme.bg, color: theme.fg, borderColor: theme.dim + "44" }}
+            >
+              <SheetTitle className="mb-1 text-base" style={{ color: theme.fg }}>Settings</SheetTitle>
+              <SheetDescription className="mb-4 text-xs" style={{ color: theme.dim }}>
+                Speed, text, mirroring, pitch time and alerts.
+              </SheetDescription>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-4 text-xs" style={{ color: theme.dim }}>
             <label className="flex items-center gap-2">
               <Gauge className="h-4 w-4" />
               <span className="font-medium">Speed {settings.speed}</span>
@@ -1276,6 +1389,8 @@ function Prompter({
               ))}
             </div>
           </div>
+            </SheetContent>
+          </Sheet>
         </div>
       </div>
 
