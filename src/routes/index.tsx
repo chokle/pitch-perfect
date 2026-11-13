@@ -847,10 +847,10 @@ function Prompter({
       </div>
 
       {/* eye-line indicator */}
-      {settings.eyeLine && !activeSlide && (
+      {settings.eyeLine && (
         <div
-          className="pointer-events-none absolute inset-x-0 z-20"
-          style={{ top: "38%" }}
+          className={cn("pointer-events-none absolute inset-x-0 z-20", activeSlide && "md:left-[42%]")}
+          style={{ top: activeSlide ? "48%" : "38%" }}
         >
           <div className="flex items-center justify-between px-3">
             {[0, 1].map((i) => (
