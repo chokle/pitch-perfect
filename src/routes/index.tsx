@@ -257,12 +257,18 @@ function Index() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [mode, setMode] = useState<"edit" | "prompt">("edit");
   const [hydrated, setHydrated] = useState(false);
+  const { totalTime } = usePitchDeck();
 
   useEffect(() => {
     setScript(localStorage.getItem(SCRIPT_KEY) ?? "");
     setSettings(loadJSON(SETTINGS_KEY, DEFAULT_SETTINGS));
     setHydrated(true);
   }, []);
+
+  useEffect(() => {
+    if (!hydrated || totalTime <= 0) return;
+    setSettings((previous) => ({ ...previous, targetTime: totalTime, timeLocked: true }));
+  }, [totalTime, hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -313,7 +319,7 @@ function Editor({
   onStart: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const { slides } = usePitchDeck();
+  const { slides, totalTime } = usePitchDeck();
 
   const handleFile = (file: File | undefined) => {
     if (!file) return;
@@ -350,7 +356,7 @@ function Editor({
 
       <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-6 py-8">
         <div className="flex items-center justify-between gap-3 border-b border-border pb-4">
-          <span className="text-sm text-muted-foreground">{slides.length ? `${slides.length} slides attached` : "Pitch deck"}</span>
+          <span className="text-sm text-muted-foreground">{slides.length ? `${slides.length} slides · ${formatTime(totalTime)} pitch` : "Pitch deck"}</span>
           <Button variant="outline" asChild><Link to="/deck"><Upload />{slides.length ? "Edit slide cues" : "Add slides"}</Link></Button>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -818,7 +824,8 @@ function Prompter({
         ref={scrollRef}
         onScroll={onScroll}
         onClick={() => setPlaying((p) => !p)}
-        className="flex-1 cursor-pointer overflow-y-auto"
+        className="relative min-h-0 min-w-0 flex-1 cursor-pointer overflow-y-auto"
+        aria-label="Pitch script"
         style={{ scrollbarWidth: "none", transform: flipTransform || undefined }}
       >
         <div
@@ -827,7 +834,7 @@ function Prompter({
             maxWidth: `${100 - settings.margin * 2}%`,
             fontSize: `${settings.fontSize}px`,
             lineHeight: 1.45,
-            paddingTop: "45vh",
+            paddingTop: activeSlide ? "20vh" : "45vh",
             paddingBottom: "70vh",
             whiteSpace: "pre-wrap",
             letterSpacing: "0.01em",
@@ -842,8 +849,8 @@ function Prompter({
       {/* eye-line indicator */}
       {settings.eyeLine && (
         <div
-          className="pointer-events-none absolute inset-x-0 z-20"
-          style={{ top: "38%" }}
+          className={cn("pointer-events-none absolute inset-x-0 z-20", activeSlide && "md:left-[42%]")}
+          style={{ top: activeSlide ? "48%" : "38%" }}
         >
           <div className="flex items-center justify-between px-3">
             {[0, 1].map((i) => (

@@ -19,7 +19,7 @@ export const Route = createFileRoute("/deck")({
 });
 
 function DeckPage() {
-  const { slides, setSlides } = usePitchDeck();
+  const { slides, setSlides, finalSlideSeconds, setFinalSlideSeconds, totalTime } = usePitchDeck();
   const [selected, setSelected] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -32,7 +32,7 @@ function DeckPage() {
     setBusy(true); setError("");
     try {
       const imported = await importSlides(files);
-      setSlides(imported); setSelected(0);
+      setSlides(imported); setFinalSlideSeconds(15); setSelected(0);
     } catch (e) { setError(e instanceof Error ? e.message : "Could not open this deck."); }
     finally { setBusy(false); }
   }
@@ -63,6 +63,10 @@ function DeckPage() {
             <aside className="order-2 lg:order-1">
               <div className="mb-3 flex items-center justify-between"><h2 className="text-sm font-semibold">Slide cues · seconds</h2><span className="text-xs text-muted-foreground">{slides.length} slides</span></div>
               {!valid && <p role="alert" className="mb-3 text-sm text-destructive">Start at 0, then use increasing cue times.</p>}
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">Final slide · seconds<input aria-label="Final slide duration seconds" type="number" min="1" step="1" value={finalSlideSeconds} className="w-16 rounded border border-input bg-background px-2 py-1 text-foreground" onChange={(e) => setFinalSlideSeconds(Math.max(1, Number(e.target.value) || 1))} /></label>
+                <span className="text-sm font-medium">Total pitch: {totalTime}s</span>
+              </div>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-1">
                 {slides.map((slide, index) => (
                   <div key={slide.id} className={`min-w-0 rounded-md border p-2 ${selected === index ? "border-primary" : "border-border"}`}>
