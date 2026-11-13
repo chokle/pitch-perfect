@@ -1,4 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { Button } from "@/components/ui/button";
+import { usePitchDeck } from "@/components/PitchDeckContext";
+import { slideAtTime, validSlideTimes } from "@/lib/deck-timeline";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Play,
@@ -310,6 +313,7 @@ function Editor({
   onStart: () => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const { slides } = usePitchDeck();
 
   const handleFile = (file: File | undefined) => {
     if (!file) return;
@@ -345,6 +349,10 @@ function Editor({
       </header>
 
       <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-6 py-8">
+        <div className="flex items-center justify-between gap-3 border-b border-border pb-4">
+          <span className="text-sm text-muted-foreground">{slides.length ? `${slides.length} slides attached` : "Pitch deck"}</span>
+          <Button variant="outline" asChild><Link to="/deck"><Upload />{slides.length ? "Edit slide cues" : "Add slides"}</Link></Button>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center gap-1.5 text-xs font-medium uppercase tracking-wider text-muted-foreground">
             <Sparkles className="h-3.5 w-3.5" /> Try a sample
@@ -418,6 +426,8 @@ function Prompter({
 }) {
   const [playing, setPlaying] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const { slides } = usePitchDeck();
+  const activeSlide = validSlideTimes(slides) ? slides[slideAtTime(slides, elapsed)] : undefined;
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -797,6 +807,13 @@ function Prompter({
       )}
 
       {/* scrolling script */}
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+      {activeSlide && (
+        <aside className="z-10 flex h-[28vh] shrink-0 flex-col border-b border-border bg-background p-3 text-foreground md:h-auto md:w-[42%] md:justify-center md:border-r md:border-b-0" aria-label="Synchronized pitch slide">
+          <img src={activeSlide.src} alt={`Pitch slide ${slideAtTime(slides, elapsed) + 1}`} className="min-h-0 w-full flex-1 object-contain md:max-h-[65vh] md:flex-none" />
+          <p className="mt-2 text-center font-mono text-xs text-muted-foreground">Slide {slideAtTime(slides, elapsed) + 1} / {slides.length}</p>
+        </aside>
+      )}
       <div
         ref={scrollRef}
         onScroll={onScroll}
@@ -818,6 +835,8 @@ function Prompter({
         >
           {script}
         </div>
+      </div>
+
       </div>
 
       {/* eye-line indicator */}

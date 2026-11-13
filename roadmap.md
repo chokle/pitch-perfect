@@ -1,5 +1,7 @@
 # Roadmap
 
+- [x] Pitch deck page: PDF/image upload, slide timing, synchronized teleprompter display
+
 - [x] Teleprompter editor + prompter view
 - [x] Lockable pitch time with countdown
 - [x] Persist time limit + warning prefs; custom thresholds; visual/sound/both alerts
