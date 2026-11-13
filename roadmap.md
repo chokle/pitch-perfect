@@ -1,6 +1,6 @@
 # Roadmap
 
-- [ ] Set loaded deck duration as the pitch countdown limit and verify slides remain visible with the script.
+- [x] Set loaded deck duration as the pitch countdown limit and verify slides remain visible with the script.
 
 - [x] Pitch deck page: PDF/image upload, slide timing, synchronized teleprompter display
 
