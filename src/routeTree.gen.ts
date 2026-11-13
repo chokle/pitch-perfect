@@ -10,11 +10,17 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as DeckRouteImport } from './routes/deck'
 import { Route as ApiCoachRouteImport } from './routes/api/coach'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DeckRoute = DeckRouteImport.update({
+  id: '/deck',
+  path: '/deck',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiCoachRoute = ApiCoachRouteImport.update({
@@ -25,27 +31,31 @@ const ApiCoachRoute = ApiCoachRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/deck': typeof DeckRoute
   '/api/coach': typeof ApiCoachRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/deck': typeof DeckRoute
   '/api/coach': typeof ApiCoachRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/deck': typeof DeckRoute
   '/api/coach': typeof ApiCoachRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api/coach'
+  fullPaths: '/' | '/deck' | '/api/coach'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/coach'
-  id: '__root__' | '/' | '/api/coach'
+  to: '/' | '/deck' | '/api/coach'
+  id: '__root__' | '/' | '/deck' | '/api/coach'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  DeckRoute: typeof DeckRoute
   ApiCoachRoute: typeof ApiCoachRoute
 }
 
@@ -56,6 +66,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/deck': {
+      id: '/deck'
+      path: '/deck'
+      fullPath: '/deck'
+      preLoaderRoute: typeof DeckRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/coach': {
@@ -70,6 +87,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  DeckRoute: DeckRoute,
   ApiCoachRoute: ApiCoachRoute,
 }
 export const routeTree = rootRouteImport

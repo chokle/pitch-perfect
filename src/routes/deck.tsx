@@ -24,6 +24,7 @@ function DeckPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const touchX = useRef(0);
   const current = slides[selected];
   const valid = validSlideTimes(slides);
   async function upload(files: File[]) {
