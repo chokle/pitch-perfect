@@ -11,3 +11,4 @@
 
 - Keep uploaded pitch slides in a root React provider for the current tab session; navigation must preserve slides without uploading private deck files to a service.
 - Import PDF decks with dynamically loaded PDF.js in the browser, and sync slide cues to the existing prompter elapsed timer so pause and reset remain aligned.
+- Derive deck total time from the last cue plus its editable final-slide duration in the root deck provider; apply it as the saved locked pitch limit when deck timing changes so slides and countdown share one clock.
