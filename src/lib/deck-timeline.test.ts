@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import { strict as assert } from "node:assert";
-import { deckDuration, slideAtTime, syncDeckTimeLock, validSlideTimes } from "./deck-timeline";
+import { deckDuration, slideAtProgress, slideAtTime, syncDeckTimeLock, validSlideTimes } from "./deck-timeline";
 
 const slides = [0, 15, 30].map((start) => ({ id: String(start), start, name: "Slide", src: "" }));
 const expect = (actual: unknown) => ({ toBe: (expected: unknown) => assert.equal(actual, expected) });
@@ -43,5 +43,11 @@ describe("pitch slide synchronization", () => {
     const manual = syncDeckTimeLock({ targetTime: 90, timeLocked: true, deckLocked: false }, 0);
     expect(manual.targetTime).toBe(90);
     expect(manual.timeLocked).toBe(true);
+  });
+  test("slides follow reading position, not fixed seconds", () => {
+    expect(slideAtProgress(slides, 0)).toBe(0);
+    expect(slideAtProgress(slides, 0.34)).toBe(1);
+    expect(slideAtProgress(slides, 0.7)).toBe(2);
+    expect(slideAtProgress(slides, 1)).toBe(2);
   });
 });

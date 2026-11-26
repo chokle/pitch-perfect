@@ -26,3 +26,10 @@ export function syncDeckTimeLock<T extends PitchTimeLock>(settings: T, totalTime
   if (!settings.deckLocked) return settings;
   return { ...settings, targetTime: 0, timeLocked: false, deckLocked: false };
 }
+
+/** Maps reading progress (0–1 through the script) onto slide cues, scaled to the deck's planned length. */
+export function slideAtProgress(slides: PitchSlide[], progress: number, finalSlideSeconds = 15): number {
+  const total = deckDuration(slides, finalSlideSeconds);
+  if (!total) return 0;
+  return slideAtTime(slides, Math.min(1, Math.max(0, progress)) * total);
+}

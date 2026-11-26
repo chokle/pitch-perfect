@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { usePitchDeck } from "@/components/PitchDeckContext";
-import { slideAtTime, syncDeckTimeLock, validSlideTimes } from "@/lib/deck-timeline";
+import { slideAtProgress, syncDeckTimeLock, validSlideTimes } from "@/lib/deck-timeline";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Play,
@@ -434,8 +434,11 @@ function Prompter({
 }) {
   const [playing, setPlaying] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const { slides } = usePitchDeck();
-  const activeSlide = validSlideTimes(slides) ? slides[slideAtTime(slides, elapsed)] : undefined;
+  const { slides, finalSlideSeconds } = usePitchDeck();
+  const [progress, setProgress] = useState(0);
+  // Slides follow the reading position, so speeding up or slowing down advances them in real time.
+  const activeIndex = slideAtProgress(slides, progress, finalSlideSeconds);
+  const activeSlide = validSlideTimes(slides) ? slides[activeIndex] : undefined;
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -682,7 +685,6 @@ function Prompter({
 
   const recordingTime = recording ? Math.max(0, elapsed - recStartElapsedRef.current) : 0;
 
-  const [progress, setProgress] = useState(0);
   const onScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
@@ -818,8 +820,8 @@ function Prompter({
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
       {activeSlide && (
         <aside className="z-10 flex h-[28vh] shrink-0 flex-col border-b border-border bg-background p-3 text-foreground md:h-auto md:w-[42%] md:justify-center md:border-r md:border-b-0" aria-label="Synchronized pitch slide">
-          <img src={activeSlide.src} alt={`Pitch slide ${slideAtTime(slides, elapsed) + 1}`} className="min-h-0 w-full flex-1 object-contain md:max-h-[65vh] md:flex-none" />
-          <p className="mt-2 text-center font-mono text-xs text-muted-foreground">Slide {slideAtTime(slides, elapsed) + 1} / {slides.length}</p>
+          <img src={activeSlide.src} alt={`Pitch slide ${activeIndex + 1}`} className="min-h-0 w-full flex-1 object-contain md:max-h-[65vh] md:flex-none" />
+          <p className="mt-2 text-center font-mono text-xs text-muted-foreground">Slide {activeIndex + 1} / {slides.length}</p>
         </aside>
       )}
       <div
