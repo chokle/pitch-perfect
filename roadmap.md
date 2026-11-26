@@ -1,5 +1,6 @@
 # Roadmap
 
+- [x] Clear deck-owned pitch-time locks when the deck is removed, invalid, or lost on refresh; preserve manual locks.
 - [x] Set loaded deck duration as the pitch countdown limit and verify slides remain visible with the script.
 
 - [x] Pitch deck page: PDF/image upload, slide timing, synchronized teleprompter display

@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { usePitchDeck } from "@/components/PitchDeckContext";
-import { slideAtTime, validSlideTimes } from "@/lib/deck-timeline";
+import { slideAtTime, syncDeckTimeLock, validSlideTimes } from "@/lib/deck-timeline";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Play,
@@ -130,6 +130,7 @@ interface Settings {
   wpm: number;
   targetTime: number; // seconds, 0 = off
   timeLocked: boolean;
+  deckLocked: boolean; // true when the current lock came from deck timing
   thresholdUnit: ThresholdUnit;
   warnAt: number; // remaining seconds (or % of target) for first cue
   finalAt: number; // remaining seconds (or %) for final cue
@@ -147,6 +148,7 @@ const DEFAULT_SETTINGS: Settings = {
   wpm: 130,
   targetTime: 0,
   timeLocked: false,
+  deckLocked: false,
   thresholdUnit: "sec",
   warnAt: 30,
   finalAt: 10,
@@ -266,8 +268,8 @@ function Index() {
   }, []);
 
   useEffect(() => {
-    if (!hydrated || totalTime <= 0) return;
-    setSettings((previous) => ({ ...previous, targetTime: totalTime, timeLocked: true }));
+    if (!hydrated) return;
+    setSettings((previous) => syncDeckTimeLock(previous, totalTime));
   }, [totalTime, hydrated]);
 
   useEffect(() => {
@@ -1174,7 +1176,7 @@ function Prompter({
                 title="Seconds or mm:ss, e.g. 90 or 1:30"
               />
               <button
-                onClick={() => upd({ timeLocked: !settings.timeLocked })}
+                onClick={() => upd({ timeLocked: !settings.timeLocked, deckLocked: false })}
                 disabled={!settings.timeLocked && settings.targetTime <= 0}
                 className="flex items-center gap-1.5 rounded-full border px-3 py-1.5 font-medium disabled:cursor-not-allowed disabled:opacity-40"
                 style={{

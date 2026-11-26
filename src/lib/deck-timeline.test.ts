@@ -1,6 +1,6 @@
 import { describe, test } from "node:test";
 import { strict as assert } from "node:assert";
-import { deckDuration, slideAtTime, validSlideTimes } from "./deck-timeline";
+import { deckDuration, slideAtTime, syncDeckTimeLock, validSlideTimes } from "./deck-timeline";
 
 const slides = [0, 15, 30].map((start) => ({ id: String(start), start, name: "Slide", src: "" }));
 const expect = (actual: unknown) => ({ toBe: (expected: unknown) => assert.equal(actual, expected) });
@@ -31,5 +31,17 @@ describe("pitch slide synchronization", () => {
     expect(validSlideTimes(slides)).toBe(true);
     expect(validSlideTimes([{ id: "a", name: "Slide", src: "", start: 1 }])).toBe(false);
     expect(validSlideTimes([0, 0].map((start) => ({ id: String(start), name: "Slide", src: "", start })))).toBe(false);
+  });
+  test("removing a deck clears the countdown lock it set", () => {
+    const locked = syncDeckTimeLock({ targetTime: 0, timeLocked: false }, 45);
+    expect(locked.targetTime).toBe(45);
+    const cleared = syncDeckTimeLock(locked, 0);
+    expect(cleared.targetTime).toBe(0);
+    expect(cleared.timeLocked).toBe(false);
+  });
+  test("no deck keeps a pitch time the speaker locked themselves", () => {
+    const manual = syncDeckTimeLock({ targetTime: 90, timeLocked: true, deckLocked: false }, 0);
+    expect(manual.targetTime).toBe(90);
+    expect(manual.timeLocked).toBe(true);
   });
 });

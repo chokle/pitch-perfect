@@ -18,3 +18,11 @@ export function validSlideTimes(slides: PitchSlide[]): boolean {
   return slides.every((slide, i) => Number.isFinite(slide.start) &&
     (i === 0 ? slide.start === 0 : slide.start > (slides[i - 1]?.start ?? Infinity)));
 }
+export type PitchTimeLock = { targetTime: number; timeLocked: boolean; deckLocked?: boolean };
+
+/** Applies deck timing to the countdown; releases only locks the deck itself set. */
+export function syncDeckTimeLock<T extends PitchTimeLock>(settings: T, totalTime: number): T {
+  if (totalTime > 0) return { ...settings, targetTime: totalTime, timeLocked: true, deckLocked: true };
+  if (!settings.deckLocked) return settings;
+  return { ...settings, targetTime: 0, timeLocked: false, deckLocked: false };
+}
